@@ -408,7 +408,36 @@ export class GameEngine {
 
     // Layer 4b: Floating Asteroid Belt Rocks with Directional Rim Glow
     this.asteroids = [];
-    const asteroidCount = 6;
+
+    // 1. The Majestic Giant Megalith Asteroid of Sahabat KAFA ("Batu Raksasa Sahabat KAFA")
+    const megalithOffsets: number[] = [];
+    const megalithPts = 16;
+    for (let p = 0; p < megalithPts; p++) {
+      megalithOffsets.push(0.85 + Math.sin(p * 1.3) * 0.18 + (p % 2 === 0 ? 0.1 : -0.08));
+    }
+    const giantMegalithRadius = Math.max(65, Math.min(95, this.width * 0.17));
+    this.asteroids.push({
+      x: this.width * 0.35,
+      y: this.height * 0.3,
+      radius: giantMegalithRadius,
+      angle: -0.15,
+      rotSpeed: 0.04, // Very slow, majestic rotation
+      vy: 6.5,
+      vx: 1.2,
+      rimColor: '#00f0ff',
+      baseColor: '#0f172a',
+      shapeOffsets: megalithOffsets,
+      isGiantMegalith: true,
+      label: 'SAHABAT KAFA',
+      arabicLabel: 'صَحَابَة كَافَا',
+      beaconLightTimer: 0,
+      crystalVeinColor: '#38bdf8',
+      moonletAngle: 0,
+      hitReactionTimer: 0,
+    });
+
+    // 2. Regular field asteroids
+    const asteroidCount = 5;
     for (let i = 0; i < asteroidCount; i++) {
       const offsets: number[] = [];
       const numPts = 8;
@@ -486,6 +515,9 @@ export class GameEngine {
         type: world.celestialBodyType,
         vy: 3.5,
         alpha: 0.95,
+        label: 'PLANET SAHABAT KAFA',
+        orbitalRingText: '★ SAHABAT KAFA ★',
+        rotation: 0,
       },
       // Smaller secondary planet
       {
@@ -496,12 +528,15 @@ export class GameEngine {
         type: 'crystal_planet',
         vy: 5,
         alpha: 0.8,
+        label: 'MOON KAFA',
       },
     ];
 
-    // Update asteroid rim colors to match world aesthetic
+    // Update asteroid rim colors to match world aesthetic (keep giant megalith with glowing signature cyan)
     for (const a of this.asteroids) {
-      a.rimColor = world.themeColor;
+      if (!a.isGiantMegalith) {
+        a.rimColor = world.themeColor;
+      }
     }
   }
 
@@ -2412,6 +2447,9 @@ export class GameEngine {
     // 3. Celestial Planets
     for (const cp of this.celestialPlanets) {
       cp.y += cp.vy * dt * 0.4 * warpSpeed;
+      if (cp.rotation !== undefined) {
+        cp.rotation = (cp.rotation + dt * 0.12) % (Math.PI * 2);
+      }
       if (cp.y - cp.radius > this.height) {
         cp.y = -cp.radius * 1.5;
         cp.x = Math.random() * this.width;
@@ -2451,9 +2489,22 @@ export class GameEngine {
       a.y += a.vy * dt * warpSpeed;
       a.x += a.vx * dt;
       a.angle += a.rotSpeed * dt;
+      if (a.beaconLightTimer !== undefined) {
+        a.beaconLightTimer = (a.beaconLightTimer + dt * 4.0) % (Math.PI * 2);
+      }
+      if (a.moonletAngle !== undefined) {
+        a.moonletAngle = (a.moonletAngle + dt * 0.8) % (Math.PI * 2);
+      }
+      if (a.hitReactionTimer && a.hitReactionTimer > 0) {
+        a.hitReactionTimer -= dt;
+      }
       if (a.y - a.radius > this.height) {
         a.y = -a.radius * 2;
-        a.x = Math.random() * this.width;
+        if (a.isGiantMegalith) {
+          a.x = Math.random() * (this.width * 0.6) + this.width * 0.2;
+        } else {
+          a.x = Math.random() * this.width;
+        }
       }
     }
 
@@ -2819,6 +2870,31 @@ export class GameEngine {
             sound.playHit();
             this.damageBoss(proj.power * 4);
             this.createSparks(proj.x, proj.y, '#f59e0b', 12);
+          }
+        }
+      }
+
+      if (projConsumed) {
+        this.projectiles.splice(pi, 1);
+        continue;
+      }
+
+      // Check collision with Giant Megalith Asteroid of Sahabat KAFA (non-destructive, fun cosmic reaction!)
+      for (const a of this.asteroids) {
+        if (a.isGiantMegalith) {
+          const dx = proj.x - a.x;
+          const dy = proj.y - a.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < a.radius + 10) {
+            projConsumed = true;
+            a.hitReactionTimer = 0.45;
+            sound.playHit();
+            this.createSparks(proj.x, proj.y, a.crystalVeinColor || '#00f0ff', 10);
+            this.createSparks(proj.x, proj.y, '#ffffff', 5);
+            if (Math.random() < 0.35) {
+              this.addFloatingText(proj.x, proj.y - 12, '✦ ENERGI SAHABAT KAFA! ✦', '#38bdf8', 1.0);
+            }
+            break;
           }
         }
       }
@@ -3402,25 +3478,229 @@ export class GameEngine {
     ctx.translate(a.x, a.y);
     ctx.rotate(a.angle);
 
-    ctx.beginPath();
-    const pts = a.shapeOffsets.length;
-    for (let i = 0; i < pts; i++) {
-      const angle = (i * 2 * Math.PI) / pts;
-      const r = a.radius * a.shapeOffsets[i];
-      const px = Math.cos(angle) * r;
-      const py = Math.sin(angle) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    if (a.isGiantMegalith) {
+      // 1. Giant Megalith Cosmic Rock Body with 3D Faceted Shading
+      ctx.beginPath();
+      const pts = a.shapeOffsets.length;
+      for (let i = 0; i < pts; i++) {
+        const angle = (i * 2 * Math.PI) / pts;
+        const r = a.radius * a.shapeOffsets[i];
+        const px = Math.cos(angle) * r;
+        const py = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+
+      // Realistic 3D rock gradient with light source from top-left
+      const rockGrad = ctx.createRadialGradient(-a.radius * 0.35, -a.radius * 0.35, a.radius * 0.1, 0, 0, a.radius * 1.15);
+      const isReacting = Boolean(a.hitReactionTimer && a.hitReactionTimer > 0);
+      rockGrad.addColorStop(0, isReacting ? '#64748b' : '#334155');
+      rockGrad.addColorStop(0.35, isReacting ? '#475569' : '#1e293b');
+      rockGrad.addColorStop(0.8, '#0f172a');
+      rockGrad.addColorStop(1, '#020617');
+
+      ctx.fillStyle = rockGrad;
+      ctx.fill();
+
+      // Outer Rim Glow
+      ctx.shadowColor = a.rimColor || '#00f0ff';
+      ctx.shadowBlur = isReacting ? 25 : 12;
+      ctx.strokeStyle = isReacting ? '#67e8f9' : (a.rimColor || '#38bdf8');
+      ctx.lineWidth = isReacting ? 3.5 : 2.2;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 2. 3D Craters on Asteroid Surface
+      const craters = [
+        { cx: -a.radius * 0.42, cy: -a.radius * 0.36, cr: a.radius * 0.18 },
+        { cx: a.radius * 0.46, cy: a.radius * 0.38, cr: a.radius * 0.16 },
+        { cx: -a.radius * 0.48, cy: a.radius * 0.35, cr: a.radius * 0.13 },
+        { cx: a.radius * 0.38, cy: -a.radius * 0.44, cr: a.radius * 0.15 },
+      ];
+      for (const cr of craters) {
+        ctx.beginPath();
+        ctx.arc(cr.cx, cr.cy, cr.cr, 0, Math.PI * 2);
+        ctx.fillStyle = '#070b14';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+
+      // 3. Glowing Cyan & Gold Crystal Veins
+      const veinColor = a.crystalVeinColor || '#38bdf8';
+      ctx.strokeStyle = veinColor;
+      ctx.lineWidth = 1.6;
+      ctx.shadowColor = veinColor;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      // Vein 1: Left to Center
+      ctx.moveTo(-a.radius * 0.72, -a.radius * 0.1);
+      ctx.lineTo(-a.radius * 0.42, -a.radius * 0.05);
+      ctx.lineTo(-a.radius * 0.25, -a.radius * 0.2);
+      ctx.lineTo(-a.radius * 0.05, -a.radius * 0.15);
+      ctx.stroke();
+      // Vein 2: Bottom-Right Crevice
+      ctx.beginPath();
+      ctx.moveTo(a.radius * 0.1, a.radius * 0.25);
+      ctx.lineTo(a.radius * 0.35, a.radius * 0.32);
+      ctx.lineTo(a.radius * 0.65, a.radius * 0.18);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 4. Central Inscribed Monolith Tablet: "SAHABAT KAFA"
+      const plateW = a.radius * 1.35;
+      const plateH = a.radius * 0.68;
+      const plateX = -plateW / 2;
+      const plateY = -plateH / 2;
+
+      // Holographic Plate Background
+      const plateGrad = ctx.createLinearGradient(plateX, plateY, plateX, plateY + plateH);
+      plateGrad.addColorStop(0, 'rgba(15, 23, 42, 0.94)');
+      plateGrad.addColorStop(0.5, 'rgba(8, 47, 73, 0.9)');
+      plateGrad.addColorStop(1, 'rgba(2, 6, 23, 0.96)');
+
+      ctx.fillStyle = plateGrad;
+      ctx.beginPath();
+      ctx.roundRect(plateX, plateY, plateW, plateH, 8);
+      ctx.fill();
+
+      // Glowing Cyber Tech Border
+      ctx.strokeStyle = isReacting ? '#facc15' : '#00f0ff';
+      ctx.lineWidth = 1.8;
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Tech Corner Accent Brackets
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      // Top-left
+      ctx.beginPath();
+      ctx.moveTo(plateX - 2, plateY + 6);
+      ctx.lineTo(plateX - 2, plateY - 2);
+      ctx.lineTo(plateX + 6, plateY - 2);
+      ctx.stroke();
+      // Top-right
+      ctx.beginPath();
+      ctx.moveTo(plateX + plateW + 2, plateY + 6);
+      ctx.lineTo(plateX + plateW + 2, plateY - 2);
+      ctx.lineTo(plateX + plateW - 6, plateY - 2);
+      ctx.stroke();
+      // Bottom-left
+      ctx.beginPath();
+      ctx.moveTo(plateX - 2, plateY + plateH - 6);
+      ctx.lineTo(plateX - 2, plateY + plateH + 2);
+      ctx.lineTo(plateX + 6, plateY + plateH + 2);
+      ctx.stroke();
+      // Bottom-right
+      ctx.beginPath();
+      ctx.moveTo(plateX + plateW + 2, plateY + plateH - 6);
+      ctx.lineTo(plateX + plateW + 2, plateY + plateH + 2);
+      ctx.lineTo(plateX + plateW - 6, plateY + plateH + 2);
+      ctx.stroke();
+
+      // Top Tag: ✦ SEKTOR KOSMIK ✦
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 8px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✦ SEKTOR KOSMIK ✦', 0, plateY + 11);
+
+      // MAIN BOLD TITLE: "SAHABAT KAFA"
+      ctx.save();
+      ctx.shadowColor = isReacting ? '#fef08a' : '#38bdf8';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = '#ffffff';
+      const fontSize = Math.max(12, Math.min(18, a.radius * 0.22));
+      ctx.font = `900 ${fontSize}px Orbitron, sans-serif`;
+      ctx.fillText(a.label || 'SAHABAT KAFA', 0, plateY + plateH * 0.48);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // Subtitle Arabic Calligraphy: "صَحَابَة كَافَا"
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = 'bold 11px Amiri, Arial, sans-serif';
+      ctx.fillText(a.arabicLabel || 'صَحَابَة كَافَا', 0, plateY + plateH * 0.82);
+
+      // 5. Radio Communication Beacon Mast on Asteroid Peak
+      const mastX = 0;
+      const mastTopY = -a.radius * 0.95;
+      const mastTipY = mastTopY - 18;
+
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(mastX, mastTopY);
+      ctx.lineTo(mastX, mastTipY);
+      ctx.stroke();
+
+      // Crossbars
+      ctx.beginPath();
+      ctx.moveTo(mastX - 5, mastTipY + 7);
+      ctx.lineTo(mastX + 5, mastTipY + 7);
+      ctx.moveTo(mastX - 3, mastTipY + 12);
+      ctx.lineTo(mastX + 3, mastTipY + 12);
+      ctx.stroke();
+
+      // Pulsing Radio Wave Rings
+      const pulseT = a.beaconLightTimer || 0;
+      const pulseWaveR = 6 + (pulseT * 4) % 18;
+      const pulseAlpha = Math.max(0, 1 - pulseWaveR / 18);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${pulseAlpha})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(mastX, mastTipY, pulseWaveR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Blinking Beacon LED Light
+      const isBeaconOn = Math.sin(pulseT * 2) > 0;
+      ctx.fillStyle = isBeaconOn ? '#10b981' : '#06b6d4';
+      ctx.shadowColor = isBeaconOn ? '#34d399' : '#00f0ff';
+      ctx.shadowBlur = isBeaconOn ? 12 : 5;
+      ctx.beginPath();
+      ctx.arc(mastX, mastTipY, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 6. Orbiting Tiny Stardust Moonlet
+      const mAngle = a.moonletAngle || 0;
+      const moonDist = a.radius * 1.38;
+      const moonX = Math.cos(mAngle) * moonDist;
+      const moonY = Math.sin(mAngle) * (moonDist * 0.45); // elliptical orbit
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+    } else {
+      // Standard Field Asteroid
+      ctx.beginPath();
+      const pts = a.shapeOffsets.length;
+      for (let i = 0; i < pts; i++) {
+        const angle = (i * 2 * Math.PI) / pts;
+        const r = a.radius * a.shapeOffsets[i];
+        const px = Math.cos(angle) * r;
+        const py = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+
+      ctx.fillStyle = a.baseColor;
+      ctx.fill();
+
+      // Colored rim highlight on top-left edge
+      ctx.strokeStyle = a.rimColor;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
     }
-    ctx.closePath();
-
-    ctx.fillStyle = a.baseColor;
-    ctx.fill();
-
-    // Colored rim highlight on top-left edge
-    ctx.strokeStyle = a.rimColor;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
 
     ctx.restore();
   }
@@ -3599,6 +3879,35 @@ export class GameEngine {
       ctx.fill();
       ctx.shadowBlur = 0;
 
+      // Special Planet Sahabat KAFA Surface Continents & Night City Clusters
+      if (p.type === 'sahabat_kafa_planet' || p.label?.includes('SAHABAT KAFA')) {
+        // Glowing Emerald Continents
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
+        ctx.beginPath();
+        ctx.ellipse(p.x - p.radius * 0.22, p.y - p.radius * 0.12, p.radius * 0.42, p.radius * 0.26, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(p.x + p.radius * 0.26, p.y + p.radius * 0.22, p.radius * 0.38, p.radius * 0.22, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Golden City Clusters (Night Side)
+        const citySpots = [
+          { cx: p.x - p.radius * 0.16, cy: p.y - p.radius * 0.08 },
+          { cx: p.x - p.radius * 0.06, cy: p.y - p.radius * 0.24 },
+          { cx: p.x + p.radius * 0.18, cy: p.y + p.radius * 0.14 },
+          { cx: p.x + p.radius * 0.32, cy: p.y + p.radius * 0.06 },
+        ];
+        ctx.fillStyle = '#fef08a';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 5;
+        for (const cs of citySpots) {
+          ctx.beginPath();
+          ctx.arc(cs.cx, cs.cy, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+      }
+
       // Subtle atmospheric cloud streaks
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
       ctx.lineWidth = 2;
@@ -3620,6 +3929,32 @@ export class GameEngine {
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, p.radius * 1.45, p.radius * 0.38, -0.32, 0, Math.PI * 2);
         ctx.stroke();
+      }
+
+      // Majestic Orbital Holographic Banner for PLANET SAHABAT KAFA
+      if (p.orbitalRingText || p.type === 'sahabat_kafa_planet') {
+        const ringText = p.orbitalRingText || '★ PLANET SAHABAT KAFA ★';
+        ctx.save();
+        ctx.translate(p.x, p.y + p.radius * 0.65);
+
+        // Holographic Badge backing
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.7)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(-80, -12, 160, 24, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing Holographic Name
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = '#67e8f9';
+        ctx.font = '900 10.5px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ringText, 0, 0);
+        ctx.restore();
       }
     }
 

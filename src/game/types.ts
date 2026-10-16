@@ -455,9 +455,12 @@ export interface PlanetEntity {
   radius: number;
   color: string;
   ringColor?: string;
-  type: 'ringed_planet' | 'crystal_planet' | 'giant_sun' | 'space_city' | 'cosmic_core' | 'cosmic_forest';
+  type: 'ringed_planet' | 'crystal_planet' | 'giant_sun' | 'space_city' | 'cosmic_core' | 'cosmic_forest' | 'sahabat_kafa_planet';
   vy: number;
   alpha: number;
+  label?: string;
+  orbitalRingText?: string;
+  rotation?: number;
 }
 
 export interface SpiralGalaxyEntity {
@@ -504,6 +507,13 @@ export interface AsteroidEntity {
   rimColor: string;
   baseColor: string;
   shapeOffsets: number[];
+  isGiantMegalith?: boolean;
+  label?: string;
+  arabicLabel?: string;
+  beaconLightTimer?: number;
+  crystalVeinColor?: string;
+  moonletAngle?: number;
+  hitReactionTimer?: number;
 }
 
 export interface CosmicGasRibbonEntity {

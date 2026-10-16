@@ -80,15 +80,15 @@ export interface GalaxyWorld {
   planetColor: string;
   planetRingColor?: string;
   hasCelestialBody: boolean;
-  celestialBodyType: 'ringed_planet' | 'crystal_planet' | 'giant_sun' | 'space_city' | 'cosmic_core' | 'cosmic_forest';
+  celestialBodyType: 'ringed_planet' | 'crystal_planet' | 'giant_sun' | 'space_city' | 'cosmic_core' | 'cosmic_forest' | 'sahabat_kafa_planet';
   description: string;
 }
 
 export const GALAXY_WORLDS: GalaxyWorld[] = [
   {
     id: 1,
-    name: 'RAINBOW NEBULA',
-    subtitle: 'Lembah Kosmik Pelangi',
+    name: 'PLANET SAHABAT KAFA',
+    subtitle: 'Lembah Kosmik & Planet Utama KAFA',
     themeColor: '#00f0ff',
     bgGradStart: '#091026',
     bgGradEnd: '#1a0b2e',
@@ -96,8 +96,8 @@ export const GALAXY_WORLDS: GalaxyWorld[] = [
     planetColor: '#0284c7',
     planetRingColor: '#38bdf8',
     hasCelestialBody: true,
-    celestialBodyType: 'ringed_planet',
-    description: 'Awan biru, ungu, dan merah muda melayang megah di antara bintang berkilau dan planet bercincin.',
+    celestialBodyType: 'sahabat_kafa_planet',
+    description: 'Planet megah Sahabat KAFA dengan cincin orbital bercahaya neon, atmosfer safir, dan stasiun luar angkasa legendaris.',
   },
   {
     id: 2,
