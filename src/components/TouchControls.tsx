@@ -34,6 +34,7 @@ interface TouchControlsProps {
   onToggleAutoShoot?: () => void;
   hapticsEnabled?: boolean;
   onToggleHaptics?: () => void;
+  onOverchargeBurst?: () => void;
 }
 
 export const TouchControls: React.FC<TouchControlsProps> = ({
@@ -54,10 +55,19 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onToggleAutoShoot,
   hapticsEnabled = true,
   onToggleHaptics,
+  onOverchargeBurst,
 }) => {
   const [selectedJurusIndex, setSelectedJurusIndex] = useState(0);
   const [isJurusDrawerOpen, setIsJurusDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [buttonFeedbackNotice, setButtonFeedbackNotice] = useState<string | null>(null);
+
+  const showNotice = (msg: string) => {
+    setButtonFeedbackNotice(msg);
+    setTimeout(() => {
+      setButtonFeedbackNotice((curr) => (curr === msg ? null : curr));
+    }, 2400);
+  };
 
   const handleTouchStart = (key: string) => (e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault();
@@ -83,9 +93,14 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       haptics.trigger('jurus');
       if (onTriggerJurus) onTriggerJurus(jurusId);
       setIsJurusDrawerOpen(false);
+    } else if (cd > 0) {
+      sound.playWrong();
+      haptics.trigger('error');
+      showNotice(`⏳ Jurus #${def.number} Cooldown: ${cd.toFixed(1)}s`);
     } else {
       sound.playWrong();
       haptics.trigger('error');
+      showNotice(`⚡ Energi Kurang! Butuh ${def.energyCost}⚡ (Ada ${Math.floor(specialEnergy)}⚡)`);
     }
   };
 
@@ -93,6 +108,13 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     <>
       {/* ==================== 1. MOBILE CONTROLS BAR ==================== */}
       <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none px-2 sm:px-4 pb-2 sm:pb-3 select-none flex flex-col justify-end safe-pb">
+        {/* Floating Button Feedback Toast */}
+        {buttonFeedbackNotice && (
+          <div className="mx-auto mb-1 px-3 py-1 rounded-full bg-slate-950/95 border border-cyan-400 text-cyan-200 text-[10px] sm:text-xs font-bold font-orbitron shadow-[0_0_15px_rgba(6,182,212,0.6)] animate-bounce pointer-events-auto">
+            {buttonFeedbackNotice}
+          </div>
+        )}
+
         {/* Top Control Accessory Pill: Switch Mode, Auto-Shoot status, Jurus Drawer button */}
         <div className="flex items-center justify-between w-full pointer-events-auto mb-1.5 px-0.5">
           {/* Left mini pills: Quick Dash & Robot transformation */}
@@ -236,11 +258,10 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             {onTriggerJurus && (
               <button
                 onClick={() => handleCastJurus(currentJurus.id)}
-                disabled={!canFireSelectedJurus}
                 className={`h-13 sm:h-16 px-3 sm:px-4 rounded-2xl border flex items-center gap-1.5 transition-all cursor-pointer backdrop-blur-md font-orbitron font-bold text-xs ${
                   canFireSelectedJurus
                     ? 'bg-gradient-to-b from-slate-900/95 to-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.5)] active:scale-95'
-                    : 'bg-slate-950/80 border-slate-800 text-slate-500 opacity-60'
+                    : 'bg-slate-950/85 border-amber-500/40 text-amber-300/80 active:scale-95'
                 }`}
                 title={`Gunakan Jurus #${currentJurus.number}: ${currentJurus.name}`}
               >
@@ -279,8 +300,15 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
               </button>
             )}
 
-            {/* Primary Shoot Button (Always accessible or manual fire in touch drag) */}
+            {/* Primary Shoot Button / Overdrive Volley */}
             <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (autoShoot && onOverchargeBurst) {
+                  onOverchargeBurst();
+                  showNotice('⚡ OVERDRIVE BURST!');
+                }
+              }}
               onTouchStart={handleTouchStart('Space')}
               onTouchEnd={handleTouchEnd('Space')}
               onMouseDown={handleTouchStart('Space')}
@@ -292,11 +320,11 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
                   : 'bg-gradient-to-tr from-amber-500 via-orange-500 to-yellow-400 text-slate-950 border-white shadow-[0_0_25px_rgba(245,158,11,0.8)] animate-pulse'
               }`}
               aria-label="Tembak Laser"
-              title="Tembak Laser (Spasi)"
+              title={autoShoot ? 'Tembak Otomatis (Ketuk untuk Overdrive Burst)' : 'Tembak Laser (Spasi)'}
             >
               <Zap className="w-5 h-5 sm:w-6 sm:h-6 fill-slate-950" />
               <span className="text-[8px] sm:text-[9px] font-black tracking-wider uppercase">
-                {autoShoot ? 'AUTO' : 'TEMBAK'}
+                {autoShoot ? 'BURST' : 'TEMBAK'}
               </span>
             </button>
           </div>

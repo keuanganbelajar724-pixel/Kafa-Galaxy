@@ -131,10 +131,13 @@ export class GameEngine {
   private usedWeapons: Set<WeaponType> = new Set(['standard']);
   private lastJurusUsed: JurusId | null = null;
   private lastJurusTime: number = 0;
-  // 3D Perspective Arena & Depth Engine
+  // 3D Perspective Arena & PS5 Cinematic Depth Engine
   private gridPhase: number = 0;
   private gridScroll: number = 0;
   private is3DVisualEnabled: boolean = true;
+  private cameraRoll: number = 0;
+  private targetCameraRoll: number = 0;
+  private anamorphicFlareAlpha: number = 0;
 
   // Game Stats
   private stats: GameStats = {
@@ -636,6 +639,53 @@ export class GameEngine {
     this.autoShoot = enabled;
   }
 
+  public toggle3DVisual(): boolean {
+    this.is3DVisualEnabled = !this.is3DVisualEnabled;
+    this.stats.is3DVisual = this.is3DVisualEnabled;
+    this.addFloatingText(
+      this.width / 2,
+      140,
+      this.is3DVisualEnabled ? '🎬 PS5 CINEMATIC 3D: AKTIF' : '🎮 MODE 2D RETRO: AKTIF',
+      this.is3DVisualEnabled ? '#38bdf8' : '#94a3b8',
+      1.3
+    );
+    this.callbacks.onStatsUpdate(this.stats);
+    return this.is3DVisualEnabled;
+  }
+
+  public getIs3DVisual(): boolean {
+    return this.is3DVisualEnabled;
+  }
+
+  public triggerOverchargeBurst() {
+    if (!this.isRunning || this.isPaused) return;
+    const p = this.player;
+    sound.playLaser('plasma');
+    haptics.trigger('hit');
+    this.anamorphicFlareAlpha = Math.min(1.0, this.anamorphicFlareAlpha + 0.45);
+    this.createSparks(p.x, p.y - 30, '#00f0ff', 16);
+    this.createSparks(p.x, p.y - 30, '#ffffff', 8);
+
+    const angles = [-0.18, 0, 0.18];
+    for (const ang of angles) {
+      this.projectiles.push({
+        id: Math.random().toString(),
+        x: p.x + Math.sin(ang) * 16,
+        y: p.y - 25,
+        vx: Math.sin(ang) * 520,
+        vy: -Math.cos(ang) * 780,
+        radius: 6.5,
+        length: 22,
+        color: '#00f0ff',
+        glowColor: '#38bdf8',
+        power: 2.5,
+        weaponType: 'energy_blast',
+        isOvercharge: true,
+      });
+    }
+    this.addFloatingText(p.x, p.y - 50, '⚡ OVERDRIVE BURST!', '#38bdf8', 1.25);
+  }
+
   public startAmbientMode() {
     this.isMenuAmbient = true;
     this.isRunning = true;
@@ -804,7 +854,9 @@ export class GameEngine {
     };
 
     this.player.x = this.width / 2;
+    this.player.y = this.height - 90;
     this.player.vx = 0;
+    this.player.tilt = 0;
     this.player.recoilOffset = 0;
     this.player.idleHoverPhase = 0;
     this.player.fireCooldown = 0;
@@ -829,6 +881,16 @@ export class GameEngine {
     this.player.shieldBurstRadius = 0;
     this.player.novaStrikeActive = false;
     this.player.novaStrikeTimer = 0;
+    this.player.isRobotMode = false;
+    this.stats.isRobotMode = false;
+    this.stats.activeArenaBiome = 'nebula';
+    this.keys = {};
+    this.pointerControl = { isTouching: false, targetX: this.width / 2, targetY: this.height - 90 };
+    this.shakeTimer = 0;
+    this.shakeIntensity = 0;
+    this.cameraRoll = 0;
+    this.targetCameraRoll = 0;
+    this.anamorphicFlareAlpha = 0;
     this.player.jurusCooldowns = {
       double_photon: 0,
       triple_nova: 0,
@@ -856,12 +918,16 @@ export class GameEngine {
 
   private pickNewMission() {
     const pool = this.availableLetters.length > 0 ? this.availableLetters : ALL_EDUCATIONAL_QUESTIONS;
-    let chosen: HijaiyahItem;
+    let chosen: HijaiyahItem | undefined;
     if (pool.length > 1 && this.activeMission) {
       const candidates = pool.filter((l) => l.id !== this.activeMission?.id);
       chosen = candidates[Math.floor(Math.random() * candidates.length)];
     } else {
       chosen = pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    if (!chosen) {
+      chosen = pool[0] || ALL_EDUCATIONAL_QUESTIONS[0];
     }
 
     this.activeMission = chosen;
@@ -1357,6 +1423,11 @@ export class GameEngine {
 
     const targetTilt = (p.vx / p.speed) * 0.4;
     p.tilt += (targetTilt - p.tilt) * Math.min(dt * 12, 1);
+    this.targetCameraRoll = p.tilt * 0.045;
+    this.cameraRoll += (this.targetCameraRoll - this.cameraRoll) * Math.min(dt * 8, 1);
+    if (this.anamorphicFlareAlpha > 0) {
+      this.anamorphicFlareAlpha = Math.max(0, this.anamorphicFlareAlpha - dt * 2.2);
+    }
 
     const halfWidth = p.width / 2;
     if (p.x < halfWidth + 10) {
@@ -3345,7 +3416,14 @@ export class GameEngine {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // 1b. 3D Hyperspace Perspective Grid & Depth Arena
+    // 1b. PS5 Cinematic 3D Camera Roll Banking (vanishing point horizon pivot)
+    if (this.is3DVisualEnabled && Math.abs(this.cameraRoll) > 0.0005) {
+      ctx.translate(this.width / 2, this.height * 0.42);
+      ctx.rotate(this.cameraRoll);
+      ctx.translate(-this.width / 2, -this.height * 0.42);
+    }
+
+    // 1c. 3D Hyperspace Perspective Grid & Depth Arena
     this.render3DPerspectiveGrid(ctx);
 
     // 2. Parallax Layer 1: Twinkling Colorful Stars with Diffraction Crosses
@@ -3462,7 +3540,39 @@ export class GameEngine {
       ctx.arc(cd.x, cd.y, cd.size, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    // 14. Sci-Fi Film Anamorphic Lens Flare & Volumetric Bloom
+    this.renderCinematicAnamorphicFlare(ctx);
+
+    ctx.restore();
+  }
+
+  private renderCinematicAnamorphicFlare(ctx: CanvasRenderingContext2D) {
+    if (!this.is3DVisualEnabled || this.anamorphicFlareAlpha <= 0.01) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.min(0.65, this.anamorphicFlareAlpha);
+
+    // 1. Horizontal Anamorphic Blue/Cyan Film Streak
+    const py = this.player.y - 10;
+    const flareGrad = ctx.createLinearGradient(0, py, this.width, py);
+    flareGrad.addColorStop(0, 'rgba(6, 182, 212, 0)');
+    flareGrad.addColorStop(0.2, 'rgba(56, 189, 248, 0.15)');
+    flareGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.85)');
+    flareGrad.addColorStop(0.8, 'rgba(56, 189, 248, 0.15)');
+    flareGrad.addColorStop(1, 'rgba(6, 182, 212, 0)');
+
+    ctx.fillStyle = flareGrad;
+    ctx.fillRect(0, py - 2.5, this.width, 5);
+
+    // 2. Center Spherical Halo Glow
+    const halo = ctx.createRadialGradient(this.player.x, py, 2, this.player.x, py, 90);
+    halo.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+    halo.addColorStop(0.3, 'rgba(56, 189, 248, 0.35)');
+    halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(this.player.x, py, 90, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }

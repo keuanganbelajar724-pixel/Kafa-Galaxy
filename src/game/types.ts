@@ -298,6 +298,7 @@ export interface ProjectileEntity {
   isRail?: boolean;
   isSwordWave?: boolean;
   isMeteor?: boolean;
+  isOvercharge?: boolean;
   blastRadius?: number;
   trailHistory?: { x: number; y: number }[];
   life?: number;

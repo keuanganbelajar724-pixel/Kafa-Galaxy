@@ -27,6 +27,7 @@ interface GameHUDProps {
   onTriggerNovaStrike?: () => void;
   onToggleRobotMode?: () => void;
   onToggleForestBiome?: () => void;
+  onToggle3D?: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -38,6 +39,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTriggerNovaStrike,
   onToggleRobotMode,
   onToggleForestBiome,
+  onToggle3D,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
   const [isJurusDeckExpanded, setIsJurusDeckExpanded] = React.useState(true);
@@ -315,6 +317,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <span>{stats.activeArenaBiome === 'forest' ? 'HUTAN' : 'ARENA'}</span>
                 </button>
               )}
+              {onToggle3D && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onToggle3D();
+                  }}
+                  className={`px-2 py-1.5 rounded-xl border flex items-center gap-1 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                    stats.is3DVisual !== false
+                      ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                      : 'bg-slate-950/80 border-slate-700 hover:border-cyan-500/60 text-slate-400'
+                  }`}
+                  title="Aktifkan / Matikan PS5 Cinematic 3D Engine"
+                >
+                  <span>🎬</span>
+                  <span>{stats.is3DVisual !== false ? 'PS5 3D' : '2D'}</span>
+                </button>
+              )}
               <button
                 onClick={handleToggleFullscreen}
                 className="p-1.5 sm:p-2 rounded-xl bg-slate-950/80 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-md"
@@ -427,6 +447,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   title="Ganti Biome / Tantangan Hutan"
                 >
                   {stats.activeArenaBiome === 'forest' ? '🌲' : '🌌'}
+                </button>
+              )}
+
+              {onToggle3D && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onToggle3D();
+                  }}
+                  className={`p-1 rounded-lg border text-xs font-bold font-orbitron ${
+                    stats.is3DVisual !== false
+                      ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300'
+                      : 'bg-slate-950/80 border-slate-700 text-slate-500'
+                  }`}
+                  title="PS5 3D Cinematic Engine"
+                >
+                  🎬
                 </button>
               )}
 

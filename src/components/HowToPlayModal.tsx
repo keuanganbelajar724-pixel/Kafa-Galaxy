@@ -51,7 +51,13 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
                   • <b>Mode D-Pad Virtual:</b> Suka gaya arcade retro? Tekan tombol <b>🎮 D-PAD</b> untuk mengaktifkan tombol panah kiri/kanan di sudut kiri bawah.
                 </p>
                 <p>
-                  • <b>Auto-Tembak & Manual:</b> Fitur Auto-Tembak aktif secara otomatis agar jari kamu tidak pegal. Kamu bisa beralih ke tombol tembak manual kapan saja.
+                  • <b>Auto-Tembak & Overdrive Burst:</b> Fitur Auto-Tembak aktif secara otomatis. Ketuk tombol tembak kapan saja untuk melepaskan <b>⚡ OVERDRIVE BURST</b> (semburan 3 peluru plasma ekstra berdaya tinggi)!
+                </p>
+                <p>
+                  • <b>Batu Raksasa Megalit & Planet Sahabat KAFA:</b> Di latar kosmik melayang Batu Megalit Raksasa dan Planet bertuliskan kaligrafi <b>SAHABAT KAFA (صَحَابَة كَافَا)</b>. Tembak batu megalit untuk memicu percikan energi kosmik rahasia!
+                </p>
+                <p>
+                  • <b>Mode Sinematik PS5 3D:</b> Efek kemiringan kamera 3D adaptif saat bermanuver, suar lensa anamorfik film sci-fi, dan grid kedalaman horizon.
                 </p>
                 <p>
                   • <b>Getaran HP (Haptic Feedback):</b> Rasakan sensasi getaran taktil nyata saat menembak, kombo, terkena musuh, hingga mengaktifkan jurus pamungkas!

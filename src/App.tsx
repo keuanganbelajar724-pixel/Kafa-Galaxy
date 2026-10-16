@@ -354,15 +354,34 @@ export default function App() {
     setScreenState('PLAYING');
   }, []);
 
-  // Restart Game
+  // Toggle 3D Cinematic Sci-Fi Engine
+  const handleToggle3D = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.toggle3DVisual();
+    }
+  }, []);
+
+  // Overcharge burst volley when tapping shoot during auto-shoot
+  const handleOverchargeBurst = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.triggerOverchargeBurst();
+    }
+  }, []);
+
+  // Restart Game (Robust replay with zero crashes)
   const handleRestart = useCallback(() => {
-    if (!engineRef.current) return;
-    engineRef.current.setMode(currentMode);
-    engineRef.current.setSkin(currentSkinId);
-    engineRef.current.setAutoShoot(autoShoot);
-    engineRef.current.start();
-    setScreenState('PLAYING');
-  }, [currentMode, currentSkinId, autoShoot]);
+    try {
+      if (!engineRef.current) return;
+      engineRef.current.setMateri(currentMateriId);
+      engineRef.current.setMode(currentMode);
+      engineRef.current.setSkin(currentSkinId);
+      engineRef.current.setAutoShoot(autoShoot);
+      engineRef.current.start();
+      setScreenState('PLAYING');
+    } catch {
+      setScreenState('PLAYING');
+    }
+  }, [currentMateriId, currentMode, currentSkinId, autoShoot]);
 
   // Return to Home Menu
   const handleHome = useCallback(() => {
@@ -457,6 +476,7 @@ export default function App() {
             onTriggerNovaStrike={handleTriggerNovaStrike}
             onToggleRobotMode={handleToggleRobotMode}
             onToggleForestBiome={handleToggleForestBiome}
+            onToggle3D={handleToggle3D}
           />
           <TouchControls
             onVirtualKey={handleVirtualKey}
@@ -476,6 +496,7 @@ export default function App() {
             onToggleAutoShoot={handleToggleAutoShoot}
             hapticsEnabled={hapticsEnabled}
             onToggleHaptics={handleToggleHaptics}
+            onOverchargeBurst={handleOverchargeBurst}
           />
         </>
       )}
