@@ -663,10 +663,12 @@ export class GameEngine {
     this.player.vx = 0;
     this.player.tilt = 0;
     sound.stopBgm();
-    if (this.animFrameId === null) {
-      this.lastTime = performance.now();
-      this.loop(this.lastTime);
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
     }
+    this.lastTime = performance.now();
+    this.animFrameId = requestAnimationFrame(this.loop);
   }
 
   public start() {
@@ -677,9 +679,11 @@ export class GameEngine {
     this.lastTime = performance.now();
     sound.startBgm();
     achievementManager.incrementGamesPlayed();
-    if (this.animFrameId === null) {
-      this.loop(this.lastTime);
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
     }
+    this.animFrameId = requestAnimationFrame(this.loop);
   }
 
   public stop() {
@@ -696,10 +700,18 @@ export class GameEngine {
     this.isPaused = !this.isPaused;
     if (!this.isPaused) {
       this.lastTime = performance.now();
-      this.loop(this.lastTime);
+      if (this.animFrameId !== null) {
+        cancelAnimationFrame(this.animFrameId);
+        this.animFrameId = null;
+      }
+      this.animFrameId = requestAnimationFrame(this.loop);
       sound.startBgm();
     } else {
       sound.stopBgm();
+      if (this.animFrameId !== null) {
+        cancelAnimationFrame(this.animFrameId);
+        this.animFrameId = null;
+      }
     }
     return this.isPaused;
   }
@@ -1161,6 +1173,10 @@ export class GameEngine {
 
   private victory() {
     this.isRunning = false;
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
     sound.stopBgm();
     sound.playLevelUp();
     this.stats.isVictory = true;
@@ -1170,7 +1186,10 @@ export class GameEngine {
 
   // ==================== 60FPS LOOP ====================
   private loop = (timestamp: number) => {
-    if (!this.isRunning || this.isPaused) return;
+    if (!this.isRunning || this.isPaused) {
+      this.animFrameId = null;
+      return;
+    }
 
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
     this.lastTime = timestamp;
@@ -1236,7 +1255,7 @@ export class GameEngine {
     if (this.activePowerUps.magnetTimer > 0) this.activePowerUps.magnetTimer -= dt;
 
     if (this.player.specialEnergy < 100) {
-      this.player.specialEnergy = Math.min(100, this.player.specialEnergy + dt * 2.5);
+      this.player.specialEnergy = Math.min(100, this.player.specialEnergy + dt * 7.0);
       this.stats.specialEnergy = Math.floor(this.player.specialEnergy);
     }
 
@@ -3177,6 +3196,10 @@ export class GameEngine {
 
   private gameOver() {
     this.isRunning = false;
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
     sound.stopBgm();
     sound.playGameOver();
 

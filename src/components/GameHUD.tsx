@@ -42,6 +42,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
   const [isJurusDeckExpanded, setIsJurusDeckExpanded] = React.useState(true);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [jurusFeedbackNotice, setJurusFeedbackNotice] = React.useState<string | null>(null);
+
+  const showJurusFeedback = (msg: string) => {
+    setJurusFeedbackNotice(msg);
+    setTimeout(() => {
+      setJurusFeedbackNotice((curr) => (curr === msg ? null : curr));
+    }, 2800);
+  };
 
   React.useEffect(() => {
     const handleFsChange = () => {
@@ -527,64 +535,109 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* ==================== DESKTOP BOTTOM COMBAT DOCK ==================== */}
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-20 pointer-events-auto hidden md:flex flex-col items-center gap-1 select-none">
+      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto hidden md:flex flex-col items-center gap-1.5 select-none">
+        {/* Real-time Feedback Banner for Cooldown / Insufficient Energy */}
+        {jurusFeedbackNotice && (
+          <div className="px-4 py-1.5 rounded-xl bg-slate-950/95 border-2 border-amber-400 text-amber-300 font-orbitron font-bold text-xs shadow-[0_0_20px_rgba(245,158,11,0.7)] animate-bounce backdrop-blur-xl">
+            {jurusFeedbackNotice}
+          </div>
+        )}
+
+        {/* Toggle Collapse/Expand Header */}
         <button
           onClick={() => {
             sound.playClick();
             setIsJurusDeckExpanded((prev) => !prev);
           }}
-          className="px-3 py-0.5 rounded-t-xl bg-slate-900/95 border-t border-x border-cyan-500/40 text-cyan-300 hover:text-white text-[10px] font-orbitron font-bold flex items-center gap-1.5 shadow-[0_-4px_15px_rgba(6,182,212,0.3)] transition-all cursor-pointer backdrop-blur-md"
+          className="px-4 py-1 rounded-t-xl bg-slate-900/95 border-t border-x border-cyan-500/50 text-cyan-300 hover:text-white text-[11px] font-orbitron font-black flex items-center gap-2 shadow-[0_-4px_15px_rgba(6,182,212,0.35)] transition-all cursor-pointer backdrop-blur-md hover:bg-slate-800"
         >
-          <span className="text-amber-300">⚡</span>
+          <span className="text-amber-300 animate-pulse">⚡</span>
           <span>ARSENAL 14 JURUS TEMPUR SAHABAT KAFA</span>
+          <span className="text-[9px] font-mono text-cyan-400 font-normal">
+            (Klik jurus atau tekan tombol 1-9, 0, -, =)
+          </span>
           {isJurusDeckExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
         </button>
 
         {isJurusDeckExpanded && (
-          <div className="p-1.5 rounded-2xl bg-slate-950/92 border-2 border-cyan-500/50 backdrop-blur-xl shadow-[0_0_35px_rgba(6,182,212,0.4)] flex items-center gap-1 max-w-[95vw] overflow-x-auto">
+          <div className="p-2 rounded-2xl bg-slate-950/95 border-2 border-cyan-500/60 backdrop-blur-xl shadow-[0_0_35px_rgba(6,182,212,0.45)] flex items-center gap-1.5 max-w-[96vw] overflow-x-auto">
             {JURUS_REGISTRY.map((jurus) => {
               const cd = stats.activeJurusCooldowns[jurus.id] || 0;
               const hasEnergy = stats.specialEnergy >= jurus.energyCost;
               const isReady = cd <= 0 && hasEnergy;
 
+              const handleButtonClick = () => {
+                if (cd > 0) {
+                  sound.playWrong();
+                  haptics.trigger('error');
+                  showJurusFeedback(`⏱️ Jurus #${jurus.number} (${jurus.name}) Cooldown (${cd.toFixed(1)}s)!`);
+                  return;
+                }
+                if (!hasEnergy) {
+                  sound.playWrong();
+                  haptics.trigger('error');
+                  showJurusFeedback(
+                    `⚡ Butuh ${jurus.energyCost}⚡ Energi! (Energi saat ini: ${stats.specialEnergy}⚡) — Tembak huruf benar untuk isi energi!`
+                  );
+                  return;
+                }
+                if (onTriggerJurus) {
+                  haptics.trigger('jurus');
+                  onTriggerJurus(jurus.id);
+                  showJurusFeedback(`⚡ ${jurus.powerName} DIAKTIFKAN!`);
+                }
+              };
+
               return (
                 <button
                   key={jurus.id}
-                  onClick={() => {
-                    if (isReady && onTriggerJurus) {
-                      haptics.trigger('jurus');
-                      onTriggerJurus(jurus.id);
-                    } else {
-                      sound.playWrong();
-                    }
-                  }}
-                  disabled={!isReady}
-                  className={`group relative flex flex-col items-center justify-between p-1.5 rounded-xl border transition-all cursor-pointer w-[66px] h-[54px] flex-shrink-0 ${
+                  onClick={handleButtonClick}
+                  className={`group relative flex flex-col items-center justify-between p-1.5 rounded-xl border transition-all cursor-pointer w-[68px] h-[58px] flex-shrink-0 select-none ${
                     isReady
-                      ? 'bg-slate-900/90 hover:bg-cyan-950/80 border-cyan-500/40 hover:border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.25)] hover:scale-105 active:scale-95'
-                      : 'bg-slate-950/60 border-slate-800/80 opacity-50 cursor-not-allowed'
+                      ? 'bg-slate-900/95 hover:bg-cyan-950/90 border-cyan-400 hover:border-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.35)] hover:scale-105 active:scale-95'
+                      : 'bg-slate-950/80 hover:bg-slate-900/90 border-slate-700/80 hover:border-amber-500/60 opacity-80'
                   }`}
-                  title={`${jurus.powerName} (${jurus.name}): ${jurus.description}`}
+                  title={`${jurus.powerName} (${jurus.name}): ${jurus.description}. Tombol: [${jurus.hotkey}]`}
                 >
-                  <div className="flex items-center justify-between w-full text-[8px] font-mono leading-none">
-                    <span className="text-amber-300 font-bold">#{jurus.number}</span>
-                    <span className="text-cyan-400 font-bold">{jurus.hotkey.split('/')[0].trim()}</span>
+                  {/* Top Bar: Number & Keyboard shortcut key */}
+                  <div className="flex items-center justify-between w-full text-[8.5px] font-mono leading-none">
+                    <span className="text-amber-400 font-bold">#{jurus.number}</span>
+                    <span className="px-1 py-0.2 rounded bg-cyan-950/90 border border-cyan-500/40 text-cyan-300 font-black text-[7.5px]">
+                      {jurus.hotkey.split('/')[0].trim()}
+                    </span>
                   </div>
 
-                  <span className="text-lg my-auto group-hover:scale-110 transition-transform">
+                  {/* Icon */}
+                  <span className="text-xl my-auto group-hover:scale-115 transition-transform drop-shadow-[0_0_6px_currentColor]">
                     {jurus.icon}
                   </span>
 
-                  <div className="flex items-center justify-between w-full text-[7.5px] font-orbitron font-bold leading-none">
-                    <span className="text-slate-300 truncate max-w-[36px]">
+                  {/* Bottom: Name & Cost */}
+                  <div className="flex items-center justify-between w-full text-[8px] font-orbitron font-bold leading-none">
+                    <span className="text-slate-200 truncate max-w-[38px]">
                       {jurus.name.split(' ')[0]}
                     </span>
-                    <span className="text-amber-300 font-mono">{jurus.energyCost}⚡</span>
+                    <span
+                      className={`font-mono text-[8px] font-bold ${
+                        hasEnergy ? 'text-amber-300' : 'text-rose-400'
+                      }`}
+                    >
+                      {jurus.energyCost}⚡
+                    </span>
                   </div>
 
+                  {/* Cooldown Overlay */}
                   {cd > 0 && (
-                    <div className="absolute inset-0 rounded-xl bg-slate-950/85 backdrop-blur-[1px] flex items-center justify-center font-mono font-black text-amber-300 text-xs">
-                      {cd.toFixed(1)}s
+                    <div className="absolute inset-0 rounded-xl bg-slate-950/90 backdrop-blur-[2px] flex flex-col items-center justify-center font-mono font-black text-amber-300 text-xs">
+                      <span>⏱️</span>
+                      <span>{cd.toFixed(1)}s</span>
+                    </div>
+                  )}
+
+                  {/* Low Energy Hint Indicator on hover if not enough energy */}
+                  {!hasEnergy && cd <= 0 && (
+                    <div className="absolute inset-0 rounded-xl bg-slate-950/40 hover:bg-slate-950/80 transition-colors flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 text-[8px] text-rose-300 font-mono font-bold">
+                      Kurang {jurus.energyCost - stats.specialEnergy}⚡
                     </div>
                   )}
                 </button>
