@@ -1,0 +1,6 @@
+{
+  "name": "KAFA GALAXY: LETTER STRIKE",
+  "description": "Master the Letters. Conquer the Galaxy. Game arcade shooter edukatif internasional premium bertema luar angkasa untuk menguasai huruf hijaiyah dengan visual sinematik, efek AAA, pertarungan boss, dan kendali tempur futuristis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
