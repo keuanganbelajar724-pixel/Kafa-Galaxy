@@ -1,5 +1,4 @@
-import React from 'react';
-import { X, HelpCircle, Gamepad2, Target, Flame, Zap, ShieldAlert, Award, Skull, Crosshair } from 'lucide-react';
+import { X, HelpCircle, Gamepad2, Target, Flame, Zap, ShieldAlert, Award, Skull, Crosshair, Smartphone, Vibrate, Maximize } from 'lucide-react';
 import { sound } from '../game/sound';
 
 interface HowToPlayModalProps {
@@ -18,7 +17,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
             </div>
             <div className="text-left">
               <h3 className="text-lg font-black font-orbitron text-white">PANDUAN GALAXY COMBAT</h3>
-              <p className="text-xs text-slate-400">Kuasai mekanik senjata luar angkasa, mode game, dan boss fight</p>
+              <p className="text-xs text-slate-400">Kuasai kendali HP sentuh, jurus tempur, dan boss fight</p>
             </div>
           </div>
           <button
@@ -34,6 +33,36 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
 
         {/* Scrollable Guide Content */}
         <div className="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1 text-left text-sm">
+          {/* Section 0: Kendali Khusus HP / Smartphone */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/90 via-slate-900 to-sky-950/80 border-2 border-cyan-400/60 flex items-start gap-3 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 flex-shrink-0 mt-0.5">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div className="w-full">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-cyan-200 text-sm">Kendali Nyaman di HP (Smartphone)</h4>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40">100% HP READY</span>
+              </div>
+              <div className="mt-1.5 space-y-1.5 text-xs text-slate-200">
+                <p>
+                  • <b>Geser / Sentuh Layar Langsung:</b> Cukup sentuh dan geser jarimu di mana saja pada layar. Pesawat akan meluncur mengikuti jarimu secara instan dan bebas manuver!
+                </p>
+                <p>
+                  • <b>Mode D-Pad Virtual:</b> Suka gaya arcade retro? Tekan tombol <b>🎮 D-PAD</b> untuk mengaktifkan tombol panah kiri/kanan di sudut kiri bawah.
+                </p>
+                <p>
+                  • <b>Auto-Tembak & Manual:</b> Fitur Auto-Tembak aktif secara otomatis agar jari kamu tidak pegal. Kamu bisa beralih ke tombol tembak manual kapan saja.
+                </p>
+                <p>
+                  • <b>Getaran HP (Haptic Feedback):</b> Rasakan sensasi getaran taktil nyata saat menembak, kombo, terkena musuh, hingga mengaktifkan jurus pamungkas!
+                </p>
+                <p>
+                  • <b>Mode Layar Penuh (Fullscreen):</b> Tekan ikon <Maximize className="w-3.5 h-3.5 inline text-cyan-300" /> di pojok atas untuk pengalaman bermain tanpa batas bar peramban.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Section 1: Objective & Mission */}
           <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-cyan-500/30 flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-950 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">

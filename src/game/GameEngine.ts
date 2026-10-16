@@ -130,6 +130,7 @@ export class GameEngine {
   // Used weapons tracker for achievement
   private usedWeapons: Set<WeaponType> = new Set(['standard']);
   private lastJurusUsed: JurusId | null = null;
+  private lastJurusTime: number = 0;
   // 3D Perspective Arena & Depth Engine
   private gridPhase: number = 0;
   private gridScroll: number = 0;
@@ -3245,6 +3246,9 @@ export class GameEngine {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, this.width, this.height);
 
+    // 1b. 3D Hyperspace Perspective Grid & Depth Arena
+    this.render3DPerspectiveGrid(ctx);
+
     // 2. Parallax Layer 1: Twinkling Colorful Stars with Diffraction Crosses
     for (const star of this.stars) {
       const twinkle = (Math.sin(star.twinklePhase) + 1) * 0.4 + 0.3;
@@ -3457,6 +3461,80 @@ export class GameEngine {
     ctx.restore();
   }
 
+  // ==================== 3D PERSPECTIVE HYPERSPACE ARENA ====================
+  private render3DPerspectiveGrid(ctx: CanvasRenderingContext2D) {
+    if (!this.is3DVisualEnabled) return;
+    ctx.save();
+
+    const world = this.stats.currentWorld;
+    const isForest = this.stats.activeArenaBiome === 'forest';
+    const gridColorPrefix = isForest
+      ? 'rgba(52, 211, 153, '
+      : world.id === 3
+      ? 'rgba(245, 158, 11, '
+      : world.id === 4
+      ? 'rgba(56, 189, 248, '
+      : 'rgba(6, 182, 212, ';
+
+    const vpX = this.width / 2;
+    const vpY = this.height * 0.32; // 3D vanishing point on horizon
+    const floorY = this.height + 60;
+
+    // 1. Horizon Atmospheric Glow & Curvature Ridge
+    const horizonGrad = ctx.createLinearGradient(0, vpY - 25, 0, vpY + 35);
+    horizonGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    horizonGrad.addColorStop(0.5, isForest ? 'rgba(52, 211, 153, 0.22)' : 'rgba(56, 189, 248, 0.2)');
+    horizonGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = horizonGrad;
+    ctx.fillRect(0, vpY - 25, this.width, 60);
+
+    // 2. 3D Radial Perspective Grid Beams (Vanishing Point to Screen Bottom)
+    const numRays = 18;
+    for (let r = 0; r <= numRays; r++) {
+      const bottomX = (this.width / numRays) * r * 2.1 - this.width * 0.55;
+      const distFromCenter = Math.abs(bottomX - vpX) / (this.width * 1.1);
+      const alpha = Math.max(0.04, (1 - distFromCenter) * 0.25);
+
+      ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(vpX, vpY);
+      ctx.lineTo(bottomX, floorY);
+      ctx.stroke();
+    }
+
+    // 3. 3D Latitudinal Depth Rings (Exponential Perspective Spacing + Wave Undulation)
+    const numRings = 12;
+    for (let i = 0; i < numRings; i++) {
+      const progress = ((i + this.gridScroll / 40) / numRings) % 1;
+      const depthRatio = Math.pow(progress, 2.4); // 3D quadratic depth projection
+      const y = vpY + (floorY - vpY) * depthRatio;
+      const alpha = Math.max(0.02, depthRatio * 0.32);
+      const lineWidth = Math.max(0.8, depthRatio * 2.2);
+      const waveAmp = depthRatio * 8;
+
+      ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+
+      const span = this.width * (0.35 + depthRatio * 0.85);
+      const startX = vpX - span;
+      const endX = vpX + span;
+      const steps = 14;
+      const stepW = (endX - startX) / steps;
+
+      for (let s = 0; s <= steps; s++) {
+        const curX = startX + s * stepW;
+        const curY = y + Math.sin(s * 0.55 + this.gridPhase) * waveAmp;
+        if (s === 0) ctx.moveTo(curX, curY);
+        else ctx.lineTo(curX, curY);
+      }
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   private renderMeteor(ctx: CanvasRenderingContext2D, m: MeteorEntity) {
     ctx.save();
     ctx.globalAlpha = m.alpha;
@@ -3560,6 +3638,14 @@ export class GameEngine {
 
     // Subtle idle hover floating breathing motion
     const idleY = Math.sin(p.idleHoverPhase) * 2.8;
+
+    // 0. 3D Ground Drop Shadow (Real physical floor elevation & 3D grounding)
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.58)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 44, 36 + Math.abs(p.vx) * 0.05, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.save();
     ctx.translate(p.x, p.y + p.recoilOffset + idleY);
@@ -3882,6 +3968,14 @@ export class GameEngine {
 
     // Subtle idle hover floating breathing motion
     const idleY = Math.sin(p.idleHoverPhase) * 2.8;
+
+    // 0. 3D Ground Drop Shadow on Hyperspace Floor
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.58)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 46, 32 + Math.abs(p.vx) * 0.04, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.save();
     ctx.translate(p.x, p.y + p.recoilOffset + idleY);
