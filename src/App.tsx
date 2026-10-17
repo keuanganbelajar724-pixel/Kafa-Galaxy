@@ -368,6 +368,20 @@ export default function App() {
     }
   }, []);
 
+  // Change location/world dynamically
+  const handleSelectWorld = useCallback((worldId: number) => {
+    if (engineRef.current) {
+      engineRef.current.setWorld(worldId);
+    }
+  }, []);
+
+  // Toggle God Mode / Infinite Lives & Anti-Plane Super Weapons
+  const handleToggleGodMode = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.toggleGodMode();
+    }
+  }, []);
+
   // Restart Game (Robust replay with zero crashes)
   const handleRestart = useCallback(() => {
     try {
@@ -461,6 +475,10 @@ export default function App() {
           highScore={gameStats.highScore}
           controlMode={controlMode}
           onToggleControlMode={handleToggleControlMode}
+          onSelectWorld={handleSelectWorld}
+          currentWorldId={gameStats.currentWorld?.id}
+          isGodMode={gameStats.isGodMode}
+          onToggleGodMode={handleToggleGodMode}
         />
       )}
 
@@ -477,6 +495,8 @@ export default function App() {
             onToggleRobotMode={handleToggleRobotMode}
             onToggleForestBiome={handleToggleForestBiome}
             onToggle3D={handleToggle3D}
+            onSelectWorld={handleSelectWorld}
+            onToggleGodMode={handleToggleGodMode}
           />
           <TouchControls
             onVirtualKey={handleVirtualKey}
@@ -511,6 +531,8 @@ export default function App() {
           onToggleControlMode={handleToggleControlMode}
           autoShoot={autoShoot}
           onToggleAutoShoot={handleToggleAutoShoot}
+          isGodMode={gameStats.isGodMode}
+          onToggleGodMode={handleToggleGodMode}
         />
       )}
 

@@ -13,8 +13,11 @@ import {
   ChevronUp,
   Maximize,
   Minimize,
+  Globe,
+  X,
 } from 'lucide-react';
 import { GameStats, ActivePowerUps, WeaponType, JurusId, JURUS_REGISTRY } from '../game/types';
+import { GALAXY_WORLDS, GalaxyWorld } from '../game/worldData';
 import { sound } from '../game/sound';
 import { haptics } from '../game/haptics';
 
@@ -28,6 +31,8 @@ interface GameHUDProps {
   onToggleRobotMode?: () => void;
   onToggleForestBiome?: () => void;
   onToggle3D?: () => void;
+  onSelectWorld?: (worldId: number) => void;
+  onToggleGodMode?: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -40,11 +45,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleRobotMode,
   onToggleForestBiome,
   onToggle3D,
+  onSelectWorld,
+  onToggleGodMode,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
   const [isJurusDeckExpanded, setIsJurusDeckExpanded] = React.useState(true);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [jurusFeedbackNotice, setJurusFeedbackNotice] = React.useState<string | null>(null);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = React.useState(false);
 
   const showJurusFeedback = (msg: string) => {
     setJurusFeedbackNotice(msg);
@@ -299,6 +307,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Right Widget: Controls, Level & Lives */}
           <div className="pointer-events-auto flex flex-col items-end gap-1.5 min-w-[140px]">
             <div className="flex items-center gap-1.5">
+              {onSelectWorld && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    setIsLocationPickerOpen(!isLocationPickerOpen);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                    isLocationPickerOpen
+                      ? 'bg-amber-400 border-amber-200 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.6)]'
+                      : 'bg-amber-950/80 border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.4)] hover:brightness-125'
+                  }`}
+                  title="Ganti Lokasi Permainan (Matahari, Bulan, Fajar, Planet KAFA)"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">LOKASI:</span>
+                  <span className="truncate max-w-[80px] sm:max-w-[105px]">
+                    {stats.currentWorld?.name.split(' ')[0] || 'DUNIA'}
+                  </span>
+                </button>
+              )}
               {onToggleForestBiome && (
                 <button
                   onClick={() => {
@@ -333,6 +362,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 >
                   <span>🎬</span>
                   <span>{stats.is3DVisual !== false ? 'PS5 3D' : '2D'}</span>
+                </button>
+              )}
+              {onToggleGodMode && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onToggleGodMode();
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                    stats.isGodMode
+                      ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 border-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.7)] font-black'
+                      : 'bg-slate-950/80 border-slate-700 hover:border-amber-400/50 text-slate-400'
+                  }`}
+                  title="Aktifkan / Matikan Mode Dewa (Nyawa ∞ & Peluru Pintar Anti-Pesawat)"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>{stats.isGodMode ? 'DEWA: ∞' : 'NORMAL'}</span>
                 </button>
               )}
               <button
@@ -383,23 +430,32 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
             )}
 
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-950/85 border border-rose-500/30 backdrop-blur-md">
-              <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">NYAWA:</span>
-              {Array.from({ length: stats.maxLives }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className={`w-4 h-4 rounded-md flex items-center justify-center ${
-                    idx < stats.lives
-                      ? 'text-cyan-400 drop-shadow-[0_0_6px_#38bdf8]'
-                      : 'text-slate-700 opacity-40'
-                  }`}
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
-                    <path d="M12 2L6 14L8 16L12 14L16 16L18 14L12 2Z" />
-                  </svg>
-                </div>
-              ))}
-            </div>
+            {stats.isGodMode || stats.lives >= 99 ? (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-amber-950/95 via-yellow-950/90 to-amber-950/95 border border-amber-400 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] backdrop-blur-md animate-pulse">
+                <Shield className="w-3.5 h-3.5 text-amber-400 fill-amber-400/40" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 font-orbitron">
+                  NYAWA: ∞ TAK TERBATAS
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-950/85 border border-rose-500/30 backdrop-blur-md">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">NYAWA:</span>
+                {Array.from({ length: Math.min(10, stats.maxLives) }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-4 h-4 rounded-md flex items-center justify-center ${
+                      idx < stats.lives
+                        ? 'text-cyan-400 drop-shadow-[0_0_6px_#38bdf8]'
+                        : 'text-slate-700 opacity-40'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
+                      <path d="M12 2L6 14L8 16L12 14L16 16L18 14L12 2Z" />
+                    </svg>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -425,16 +481,52 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             {/* Right Controls: Lives + Arena/Forest + Fullscreen + Audio + Pause */}
             <div className="flex items-center gap-1">
               {/* Lives */}
-              <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-slate-950/80 border border-rose-500/30">
-                {Array.from({ length: stats.maxLives }).map((_, idx) => (
-                  <span
-                    key={idx}
-                    className={`text-xs ${idx < stats.lives ? 'text-cyan-400' : 'text-slate-700'}`}
-                  >
-                    ❤️
-                  </span>
-                ))}
-              </div>
+              {stats.isGodMode || stats.lives >= 99 ? (
+                <div className="flex items-center gap-1 px-1.5 py-1 rounded-lg bg-amber-950/90 border border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]">
+                  <Shield className="w-3 h-3 text-amber-400 fill-amber-400/40" />
+                  <span className="text-[10px] font-black font-orbitron">∞</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-slate-950/80 border border-rose-500/30">
+                  <span className="text-[10px] font-black text-rose-400">❤️ {stats.lives}</span>
+                </div>
+              )}
+
+              {onToggleGodMode && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onToggleGodMode();
+                  }}
+                  className={`p-1 rounded-lg border text-xs font-bold font-orbitron ${
+                    stats.isGodMode
+                      ? 'bg-amber-400 border-amber-200 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.8)]'
+                      : 'bg-slate-950/80 border-slate-700 text-slate-400'
+                  }`}
+                  title="Toggle Mode Dewa (Nyawa ∞ & Senjata Super)"
+                >
+                  🛡️
+                </button>
+              )}
+
+              {onSelectWorld && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    setIsLocationPickerOpen(!isLocationPickerOpen);
+                  }}
+                  className={`p-1 rounded-lg border text-xs font-bold font-orbitron ${
+                    isLocationPickerOpen
+                      ? 'bg-amber-400 border-amber-200 text-slate-950'
+                      : 'bg-slate-950/80 border-amber-500/50 text-amber-300'
+                  }`}
+                  title="Ganti Lokasi Permainan"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                </button>
+              )}
 
               {onToggleForestBiome && (
                 <button
@@ -684,6 +776,114 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
       </div>
+
+      {/* ==================== QUICK LOCATION / WORLD SELECTOR MODAL ==================== */}
+      {isLocationPickerOpen && onSelectWorld && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md pointer-events-auto animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg rounded-2xl bg-gradient-to-b from-slate-900/95 to-slate-950 border border-amber-400/50 p-4 sm:p-6 shadow-[0_0_40px_rgba(245,158,11,0.35)] flex flex-col gap-3">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black font-orbitron text-amber-300 uppercase tracking-wide">
+                    Pilih Lokasi & Latar Arena
+                  </h3>
+                  <p className="text-[10px] sm:text-xs text-slate-400">
+                    Ubah seketika ke matahari cerah terik, bulan perak, atau fajar!
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  haptics.trigger('button');
+                  sound.playClick();
+                  setIsLocationPickerOpen(false);
+                }}
+                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Grid of 6 Worlds */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+              {GALAXY_WORLDS.map((w) => {
+                const isActive = stats.currentWorld?.id === w.id;
+                const icon =
+                  w.id === 1
+                    ? '☀️'
+                    : w.id === 2
+                    ? '🌕'
+                    : w.id === 3
+                    ? '🌅'
+                    : w.id === 4
+                    ? '🪐'
+                    : w.id === 5
+                    ? '🌲'
+                    : '🏙️';
+
+                return (
+                  <button
+                    key={w.id}
+                    onClick={() => {
+                      haptics.trigger('button');
+                      onSelectWorld(w.id);
+                      setIsLocationPickerOpen(false);
+                    }}
+                    className={`relative p-3 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-950/60 border-amber-400 shadow-[0_0_18px_rgba(245,158,11,0.5)] ring-2 ring-amber-400/60'
+                        : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{icon}</span>
+                        <span className="text-xs font-black font-orbitron text-white leading-tight">
+                          {w.name}
+                        </span>
+                      </div>
+                      {w.isBrightTheme ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          CERAH SIANG
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          KOSMIK
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 line-clamp-1">{w.subtitle}</p>
+                    {isActive && (
+                      <span className="text-[9px] font-bold text-amber-400 flex items-center gap-1 mt-0.5">
+                        ✓ SEDANG AKTIF
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer tip */}
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500">
+              <span>💡 Tombol ini mengubah pemandangan secara real-time!</span>
+              <button
+                onClick={() => {
+                  haptics.trigger('button');
+                  sound.playClick();
+                  setIsLocationPickerOpen(false);
+                }}
+                className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

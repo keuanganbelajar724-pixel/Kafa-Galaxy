@@ -20,7 +20,7 @@ import { haptics } from '../game/haptics';
 import { MATERI_PRESETS } from '../game/hijaiyahData';
 import { GameMode, ShipSkinId } from '../game/types';
 import { achievementManager } from '../game/achievements';
-import { SHIP_SKINS } from '../game/worldData';
+import { SHIP_SKINS, GALAXY_WORLDS } from '../game/worldData';
 
 interface MainMenuProps {
   onStartGame: () => void;
@@ -36,6 +36,10 @@ interface MainMenuProps {
   highScore: number;
   controlMode?: 'dpad' | 'touch_drag';
   onToggleControlMode?: () => void;
+  onSelectWorld?: (worldId: number) => void;
+  currentWorldId?: number;
+  isGodMode?: boolean;
+  onToggleGodMode?: () => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -52,6 +56,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   highScore,
   controlMode = 'touch_drag',
   onToggleControlMode,
+  onSelectWorld,
+  currentWorldId,
+  isGodMode = true,
+  onToggleGodMode,
 }) => {
   const [isMuted, setIsMuted] = useState(sound.getIsMuted());
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -304,6 +312,35 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
         )}
 
+        {/* Mode Dewa / Infinite Lives & Anti-Plane Super Weapons Quick Switcher */}
+        {onToggleGodMode && (
+          <div className="w-full max-w-md mb-2.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-950/85 via-slate-950/90 to-amber-950/85 border border-amber-500/50 flex items-center justify-between text-xs backdrop-blur-md shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+            <div className="flex flex-col text-left">
+              <span className="text-amber-300 font-black text-xs font-orbitron flex items-center gap-1.5">
+                <span>🛡️</span>
+                <span>MODE DEWA (NYAWA ∞)</span>
+              </span>
+              <span className="text-[10px] text-amber-200/80">
+                Nyawa tak terbatas & peluru pintar memburu pesawat alien
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                haptics.trigger('button');
+                sound.playClick();
+                onToggleGodMode();
+              }}
+              className={`px-3 py-1 rounded-lg font-orbitron font-black text-xs transition-all cursor-pointer ${
+                isGodMode
+                  ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.8)]'
+                  : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'
+              }`}
+            >
+              {isGodMode ? 'AKTIF (∞)' : 'OFF'}
+            </button>
+          </div>
+        )}
+
         {/* Selected Subject / Materi Indicator Button */}
         <div
           onClick={() => {
@@ -326,6 +363,46 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             PILIH MAPEL
           </span>
         </div>
+
+        {/* World / Location Quick Carousel Selector */}
+        {onSelectWorld && (
+          <div className="w-full max-w-md mb-2.5 p-2 rounded-2xl bg-slate-950/85 border border-amber-500/40 backdrop-blur-md flex flex-col gap-1.5 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1 font-orbitron">
+                🌍 Lokasi Arena:
+              </span>
+              <span className="text-[9px] text-slate-400">
+                Pilih matahari, bulan, atau langit cerah
+              </span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 w-full">
+              {GALAXY_WORLDS.map((w) => {
+                const isSelected = (currentWorldId || 1) === w.id;
+                const icon =
+                  w.id === 1 ? '☀️' : w.id === 2 ? '🌕' : w.id === 3 ? '🌅' : w.id === 4 ? '🪐' : w.id === 5 ? '🌲' : '🏙️';
+                return (
+                  <button
+                    key={w.id}
+                    onClick={() => {
+                      haptics.trigger('button');
+                      sound.playClick();
+                      onSelectWorld(w.id);
+                    }}
+                    className={`py-1.5 px-0.5 rounded-xl text-[9px] font-bold flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_10px_rgba(245,158,11,0.6)] ring-1 ring-amber-300'
+                        : 'bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                    title={w.subtitle}
+                  >
+                    <span className="text-sm">{icon}</span>
+                    <span className="truncate max-w-[48px] leading-tight text-center">{w.name.split(' ')[0]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Launch Mission / Play Now Button */}
         <div className="w-full max-w-sm flex flex-col gap-2">

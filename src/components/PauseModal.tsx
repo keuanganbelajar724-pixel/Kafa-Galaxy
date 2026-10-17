@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Smartphone, Flame } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Smartphone, Flame, Shield } from 'lucide-react';
 import { sound } from '../game/sound';
 import { haptics } from '../game/haptics';
 
@@ -11,6 +11,8 @@ interface PauseModalProps {
   onToggleControlMode?: () => void;
   autoShoot?: boolean;
   onToggleAutoShoot?: () => void;
+  isGodMode?: boolean;
+  onToggleGodMode?: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
@@ -21,6 +23,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onToggleControlMode,
   autoShoot = true,
   onToggleAutoShoot,
+  isGodMode = true,
+  onToggleGodMode,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
 
@@ -87,6 +91,28 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                   }`}
                 >
                   {autoShoot ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            )}
+            {onToggleGodMode && (
+              <div className="flex items-center justify-between gap-1 mt-1.5 pt-1.5 border-t border-slate-800">
+                <span className="text-xs text-amber-300 font-bold flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-amber-400" />
+                  Mode Dewa (Nyawa ∞):
+                </span>
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onToggleGodMode();
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-orbitron cursor-pointer ${
+                    isGodMode
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_8px_#facc15]'
+                      : 'bg-slate-800 border border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {isGodMode ? 'AKTIF (∞)' : 'OFF'}
                 </button>
               </div>
             )}

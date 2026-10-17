@@ -75,6 +75,8 @@ export interface GalaxyWorld {
   subtitle: string;
   themeColor: string;
   bgGradStart: string;
+  bgMidColor1?: string;
+  bgMidColor2?: string;
   bgGradEnd: string;
   nebulaeColors: string[];
   planetColor: string;
@@ -82,101 +84,124 @@ export interface GalaxyWorld {
   hasCelestialBody: boolean;
   celestialBodyType: 'ringed_planet' | 'crystal_planet' | 'giant_sun' | 'space_city' | 'cosmic_core' | 'cosmic_forest' | 'sahabat_kafa_planet';
   description: string;
+  isBrightTheme?: boolean;
+  biomeId?: string;
 }
 
 export const GALAXY_WORLDS: GalaxyWorld[] = [
   {
     id: 1,
+    name: 'MATAHARI (SOLAR RADIANCE)',
+    subtitle: 'Lautan Api & Suar Surya Membara (Cerah Terik)',
+    themeColor: '#f59e0b',
+    isBrightTheme: true,
+    bgGradStart: '#fffbeb', // Brilliant solar white-gold daylight
+    bgMidColor1: '#fef08a',
+    bgMidColor2: '#f59e0b',
+    bgGradEnd: '#ea580c',
+    nebulaeColors: ['rgba(254, 240, 138, 0.75)', 'rgba(245, 158, 11, 0.65)', 'rgba(249, 115, 22, 0.55)', 'rgba(255, 255, 255, 0.8)'],
+    planetColor: '#fef08a',
+    planetRingColor: '#ffffff',
+    hasCelestialBody: true,
+    celestialBodyType: 'giant_sun',
+    biomeId: 'sun',
+    description: 'Suasana siang terang benderang di mahkota matahari raksasa! Langit emas berpendar menyilaukan dengan badai suar plasma dan lidah api surya.',
+  },
+  {
+    id: 2,
+    name: 'BULAN (LUNAR DAYLIGHT)',
+    subtitle: 'Dataran Kawah Perak & Bumi Biru Cerah',
+    themeColor: '#0ea5e9',
+    isBrightTheme: true,
+    bgGradStart: '#f8fafc', // Brilliant lunar platinum silver
+    bgMidColor1: '#e2e8f0',
+    bgMidColor2: '#94a3b8',
+    bgGradEnd: '#38bdf8', // Luminous azure Earth-rise horizon
+    nebulaeColors: ['rgba(226, 232, 240, 0.65)', 'rgba(56, 189, 248, 0.55)', 'rgba(148, 163, 184, 0.45)', 'rgba(255, 255, 255, 0.85)'],
+    planetColor: '#0284c7', // Earth blue
+    planetRingColor: '#67e8f9',
+    hasCelestialBody: true,
+    celestialBodyType: 'space_city',
+    biomeId: 'moon',
+    description: 'Siang terang di permukaan bulan berpasir perak! Pemandangan menakjubkan planet Bumi biru bersinar megah di cakrawala kawah.',
+  },
+  {
+    id: 3,
+    name: 'LANGIT FAJAR (CELESTIAL DAWN)',
+    subtitle: 'Cakrawala Cerah Zamrud & Fajar Emas',
+    themeColor: '#10b981',
+    isBrightTheme: true,
+    bgGradStart: '#ecfdf5', // Soft morning emerald daylight
+    bgMidColor1: '#a7f3d0',
+    bgMidColor2: '#34d399',
+    bgGradEnd: '#0284c7',
+    nebulaeColors: ['rgba(167, 243, 208, 0.65)', 'rgba(52, 211, 153, 0.55)', 'rgba(6, 182, 212, 0.45)'],
+    planetColor: '#10b981',
+    planetRingColor: '#fef08a',
+    hasCelestialBody: true,
+    celestialBodyType: 'cosmic_forest',
+    biomeId: 'aurora',
+    description: 'Atmosfer fajar cerah bernuansa zamrud dan pirus, dipenuhi sulur aurora hijau bercahaya dan sinar matahari pagi kosmik.',
+  },
+  {
+    id: 4,
     name: 'PLANET SAHABAT KAFA',
-    subtitle: 'Lembah Kosmik & Planet Utama KAFA',
+    subtitle: 'Lembah Kosmik & Megalit Sahabat KAFA',
     themeColor: '#00f0ff',
+    isBrightTheme: false,
     bgGradStart: '#091026',
-    bgGradEnd: '#1a0b2e',
+    bgMidColor1: '#0c1435',
+    bgMidColor2: '#180a2e',
+    bgGradEnd: '#042238',
     nebulaeColors: ['rgba(6, 182, 212, 0.45)', 'rgba(192, 132, 252, 0.4)', 'rgba(244, 114, 182, 0.35)', 'rgba(56, 189, 248, 0.3)'],
     planetColor: '#0284c7',
     planetRingColor: '#38bdf8',
     hasCelestialBody: true,
     celestialBodyType: 'sahabat_kafa_planet',
-    description: 'Planet megah Sahabat KAFA dengan cincin orbital bercahaya neon, atmosfer safir, dan stasiun luar angkasa legendaris.',
-  },
-  {
-    id: 2,
-    name: 'CRYSTAL PLANET',
-    subtitle: 'Dunia Kristal Bercahaya',
-    themeColor: '#2dd4bf',
-    bgGradStart: '#041f2a',
-    bgGradEnd: '#0f172a',
-    nebulaeColors: ['rgba(45, 212, 191, 0.4)', 'rgba(16, 185, 129, 0.35)', 'rgba(14, 165, 233, 0.3)'],
-    planetColor: '#0d9488',
-    planetRingColor: '#5eead4',
-    hasCelestialBody: true,
-    celestialBodyType: 'crystal_planet',
-    description: 'Gugusan kristal raksasa bercahaya turquoise dan asteroid kristalin mengambang di kedalaman ruang hampa.',
-  },
-  {
-    id: 3,
-    name: 'SOLAR STORM',
-    subtitle: 'Badai Suar Surya',
-    themeColor: '#f97316',
-    bgGradStart: '#20081a',
-    bgGradEnd: '#270e04',
-    nebulaeColors: ['rgba(249, 115, 22, 0.45)', 'rgba(236, 72, 153, 0.4)', 'rgba(245, 158, 11, 0.35)', 'rgba(99, 102, 241, 0.25)'],
-    planetColor: '#ea580c',
-    planetRingColor: '#fbbf24',
-    hasCelestialBody: true,
-    celestialBodyType: 'giant_sun',
-    description: 'Matahari raksasa berkobar di kejauhan dengan semburan korona jingga, magenta, dan gelombang plasma.',
-  },
-  {
-    id: 4,
-    name: 'GALAXY CITY',
-    subtitle: 'Metropolis Antariksa',
-    themeColor: '#38bdf8',
-    bgGradStart: '#060f24',
-    bgGradEnd: '#130e2c',
-    nebulaeColors: ['rgba(56, 189, 248, 0.35)', 'rgba(129, 140, 248, 0.35)', 'rgba(6, 182, 212, 0.3)'],
-    planetColor: '#312e81',
-    planetRingColor: '#818cf8',
-    hasCelestialBody: true,
-    celestialBodyType: 'space_city',
-    description: 'Stasiun luar angkasa megah dengan menara bercahaya dan alur kapal futuristis di kejauhan.',
+    biomeId: 'nebula',
+    description: 'Planet megah Sahabat KAFA dengan cincin orbital bercahaya neon, atmosfer safir, dan batu megalit raksasa legendaris.',
   },
   {
     id: 5,
-    name: 'COSMIC KINGDOM',
-    subtitle: 'Singgasana Inti Galaksi',
-    themeColor: '#fbbf24',
-    bgGradStart: '#1e052a',
-    bgGradEnd: '#090918',
-    nebulaeColors: ['rgba(168, 85, 247, 0.45)', 'rgba(251, 191, 36, 0.4)', 'rgba(236, 72, 153, 0.35)'],
-    planetColor: '#c026d3',
-    planetRingColor: '#fde047',
+    name: 'HUTAN PURBA KAFA',
+    subtitle: 'Belantara Alien Zamrud Cerah',
+    themeColor: '#34d399',
+    isBrightTheme: true,
+    bgGradStart: '#d1fae5', // Bright emerald canopy
+    bgMidColor1: '#6ee7b7',
+    bgMidColor2: '#10b981',
+    bgGradEnd: '#064e3b',
+    nebulaeColors: ['rgba(110, 231, 183, 0.6)', 'rgba(52, 211, 153, 0.5)', 'rgba(6, 182, 212, 0.4)'],
+    planetColor: '#059669',
+    planetRingColor: '#a7f3d0',
     hasCelestialBody: true,
-    celestialBodyType: 'cosmic_core',
-    description: 'Pusat galaksi bertekanan gravitasi tinggi dengan gerbang energi kosmik dan singgasana dreadnought.',
+    celestialBodyType: 'cosmic_forest',
+    biomeId: 'forest',
+    description: 'Hutan belantara alien purba bertabur spora cahaya bioluminescent dan dedaunan zamrud berpendar hangat.',
   },
   {
     id: 6,
-    name: 'COSMIC FOREST',
-    subtitle: 'Hutan Kosmik Bercahaya',
-    themeColor: '#10b981',
-    bgGradStart: '#021a13',
-    bgGradEnd: '#064e3b',
-    nebulaeColors: ['rgba(16, 185, 129, 0.45)', 'rgba(52, 211, 153, 0.35)', 'rgba(6, 182, 212, 0.3)'],
-    planetColor: '#059669',
-    planetRingColor: '#6ee7b7',
+    name: 'METROPOLIS ANGKASA',
+    subtitle: 'Kota Antariksa Emas Cyber',
+    themeColor: '#facc15',
+    isBrightTheme: true,
+    bgGradStart: '#fefce8', // Bright ivory gold daylight
+    bgMidColor1: '#fde047',
+    bgMidColor2: '#eab308',
+    bgGradEnd: '#3b0764',
+    nebulaeColors: ['rgba(253, 224, 71, 0.6)', 'rgba(234, 179, 8, 0.5)', 'rgba(236, 72, 153, 0.4)'],
+    planetColor: '#ca8a04',
+    planetRingColor: '#fef08a',
     hasCelestialBody: true,
-    celestialBodyType: 'cosmic_forest',
-    description: 'Hutan belantara alien purba dengan pohon raksasa bioluminescent, spora bercahaya, sulur neon, dan kunang-kunang energi.',
+    celestialBodyType: 'space_city',
+    biomeId: 'crystal',
+    description: 'Metropolis mengambang emas dengan menara prisma bercahaya dan armada pesawat tempur futuristis.',
   },
 ];
 
-export const COSMIC_FOREST_WORLD = GALAXY_WORLDS[5];
+export const COSMIC_FOREST_WORLD = GALAXY_WORLDS[4];
 
 export function getWorldForLevel(level: number): GalaxyWorld {
-  if (level <= 2) return GALAXY_WORLDS[0];
-  if (level <= 4) return GALAXY_WORLDS[1];
-  if (level <= 6) return GALAXY_WORLDS[2];
-  if (level <= 8) return GALAXY_WORLDS[3];
-  return GALAXY_WORLDS[4];
+  const index = (level - 1) % GALAXY_WORLDS.length;
+  return GALAXY_WORLDS[index];
 }

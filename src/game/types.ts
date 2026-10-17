@@ -32,7 +32,33 @@ export type JurusId =
   | 'meteor_rain'
   | 'gaia_quake';
 
-export type ArenaBiome = 'nebula' | 'forest' | 'crystal' | 'volcano';
+export type ArenaBiome = 'nebula' | 'forest' | 'crystal' | 'volcano' | 'sun' | 'moon' | 'aurora';
+
+export type AlienType = 'scout' | 'fighter' | 'interceptor' | 'cruiser';
+
+export interface AlienFighterEntity {
+  id: string;
+  type: AlienType;
+  name: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  width: number;
+  height: number;
+  hp: number;
+  maxHp: number;
+  shootCooldown: number;
+  shootInterval: number;
+  color: string;
+  glowColor: string;
+  tilt: number;
+  enginePhase: number;
+  hitFlash: number;
+  pattern: 'swoop' | 'hover_strafe' | 'dive' | 'escort';
+  patternPhase: number;
+  scoreValue: number;
+}
 
 export interface JurusDefinition {
   id: JurusId;
@@ -631,5 +657,6 @@ export interface GameStats {
   challengeGoal?: number;
   challengeProgress?: number;
   is3DVisual?: boolean;
+  isGodMode?: boolean;
   isVictory?: boolean;
 }

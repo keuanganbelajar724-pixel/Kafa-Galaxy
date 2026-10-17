@@ -5,6 +5,8 @@ import { achievementManager } from './achievements';
 import { GALAXY_WORLDS, GalaxyWorld, SHIP_SKINS, ShipSkin, getWorldForLevel } from './worldData';
 import {
   ActivePowerUps,
+  AlienFighterEntity,
+  AlienType,
   ArenaBiome,
   AsteroidEntity,
   BossEntity,
@@ -126,6 +128,9 @@ export class GameEngine {
   private spawnCooldown: number = 0;
   private activeMission: HijaiyahItem | null = null;
   private survivalTimer: number = 0;
+  // Active Alien Fighter Squadrons
+  private alienFighters: AlienFighterEntity[] = [];
+  private alienSpawnTimer: number = 0;
 
   // Used weapons tracker for achievement
   private usedWeapons: Set<WeaponType> = new Set(['standard']);
@@ -138,6 +143,7 @@ export class GameEngine {
   private cameraRoll: number = 0;
   private targetCameraRoll: number = 0;
   private anamorphicFlareAlpha: number = 0;
+  private isGodMode: boolean = true; // Mode Dewa: Nyawa tak terbatas & kekuatan super
 
   // Game Stats
   private stats: GameStats = {
@@ -150,8 +156,9 @@ export class GameEngine {
     combo: 0,
     maxCombo: 0,
     comboMilestone: null,
-    lives: 3,
-    maxLives: 3,
+    lives: 999,
+    maxLives: 999,
+    isGodMode: true,
     targetsHit: 0,
     targetsCorrect: 0,
     targetsWrong: 0,
@@ -657,6 +664,45 @@ export class GameEngine {
     return this.is3DVisualEnabled;
   }
 
+  public setWorld(worldId: number) {
+    const world = GALAXY_WORLDS.find((w) => w.id === worldId) || GALAXY_WORLDS[0];
+    this.stats.currentWorld = world;
+    this.updateWorldCosmos();
+    this.addFloatingText(this.width / 2, this.height * 0.35, `LOKASI: ${world.name}!`, world.themeColor, 1.8);
+    sound.playLevelUp();
+    this.callbacks.onStatsUpdate(this.stats);
+  }
+
+  public nextWorld() {
+    const currentIndex = GALAXY_WORLDS.findIndex((w) => w.id === this.stats.currentWorld.id);
+    const nextIndex = (currentIndex + 1) % GALAXY_WORLDS.length;
+    this.setWorld(GALAXY_WORLDS[nextIndex].id);
+  }
+
+  public toggleGodMode(): boolean {
+    this.isGodMode = !this.isGodMode;
+    this.stats.isGodMode = this.isGodMode;
+    if (this.isGodMode) {
+      this.stats.lives = 999;
+      this.stats.maxLives = 999;
+      this.player.specialEnergy = 100;
+      this.stats.specialEnergy = 100;
+      this.addFloatingText(this.width / 2, 140, '🛡️ MODE DEWA AKTIF: NYAWA ∞ & SENJATA SUPER PEMBASMI PESAWAT! ⚡', '#facc15', 1.6);
+      sound.playPowerup();
+    } else {
+      this.stats.lives = 10;
+      this.stats.maxLives = 10;
+      this.addFloatingText(this.width / 2, 140, '🎮 MODE NORMAL: 10 NYAWA', '#94a3b8', 1.3);
+      sound.playClick();
+    }
+    this.callbacks.onStatsUpdate(this.stats);
+    return this.isGodMode;
+  }
+
+  public getIsGodMode(): boolean {
+    return this.isGodMode;
+  }
+
   public triggerOverchargeBurst() {
     if (!this.isRunning || this.isPaused) return;
     const p = this.player;
@@ -802,8 +848,9 @@ export class GameEngine {
       combo: 0,
       maxCombo: 0,
       comboMilestone: null,
-      lives: 3,
-      maxLives: 3,
+      lives: this.isGodMode ? 999 : 10,
+      maxLives: this.isGodMode ? 999 : 10,
+      isGodMode: this.isGodMode,
       targetsHit: 0,
       targetsCorrect: 0,
       targetsWrong: 0,
@@ -909,6 +956,8 @@ export class GameEngine {
     };
     this.lastJurusUsed = null;
     this.lastJurusTime = 0;
+    this.alienFighters = [];
+    this.alienSpawnTimer = 2.0;
 
     this.updateWorldCosmos();
     this.pickNewMission();
@@ -1320,8 +1369,17 @@ export class GameEngine {
     if (this.activePowerUps.doubleScoreTimer > 0) this.activePowerUps.doubleScoreTimer -= dt;
     if (this.activePowerUps.magnetTimer > 0) this.activePowerUps.magnetTimer -= dt;
 
-    if (this.player.specialEnergy < 100) {
-      this.player.specialEnergy = Math.min(100, this.player.specialEnergy + dt * 7.0);
+    if (this.isGodMode) {
+      this.player.specialEnergy = 100;
+      this.stats.specialEnergy = 100;
+      this.stats.lives = 999;
+      this.stats.maxLives = 999;
+      this.player.ultimateEnergy = Math.min(100, this.player.ultimateEnergy + dt * 10);
+      this.stats.ultimateEnergy = Math.floor(this.player.ultimateEnergy);
+      this.stats.novaStrikeReady = this.player.ultimateEnergy >= 100;
+      this.stats.galaxyBreakerReady = this.player.ultimateEnergy >= 100;
+    } else if (this.player.specialEnergy < 100) {
+      this.player.specialEnergy = Math.min(100, this.player.specialEnergy + dt * 16.0);
       this.stats.specialEnergy = Math.floor(this.player.specialEnergy);
     }
 
@@ -1345,6 +1403,7 @@ export class GameEngine {
     }
 
     this.updateTargets(dt * gameSpeedMultiplier);
+    this.updateAlienFighters(dt * gameSpeedMultiplier);
     this.updateProjectiles(dt);
     this.updateEnemyProjectiles(dt);
     this.updatePowerUps(dt);
@@ -1783,6 +1842,27 @@ export class GameEngine {
           this.addMuzzleSpark(p.x + xOff, p.y - 20);
         });
       }
+    }
+
+    // MODE DEWA: Peluru Pintar Anti-Pesawat Otomatis Memburu Pesawat Musuh & Boss
+    if (this.isGodMode) {
+      [-26, 26].forEach((xOff, idx) => {
+        this.projectiles.push({
+          id: Math.random().toString(),
+          x: p.x + xOff,
+          y: p.y - 15,
+          vx: idx === 0 ? -120 : 120,
+          vy: -680,
+          radius: 5.5,
+          length: 22,
+          color: '#facc15',
+          glowColor: '#fbbf24',
+          power: 6,
+          weaponType: 'homing_phoenix',
+          isHoming: true,
+          turnRate: 24,
+        });
+      });
     }
   }
 
@@ -2256,6 +2336,22 @@ export class GameEngine {
       }
     }
 
+    // Pierce all alien fighters in rail column
+    for (let ai = this.alienFighters.length - 1; ai >= 0; ai--) {
+      const a = this.alienFighters[ai];
+      if (Math.abs(a.x - p.x) < beamHalfWidth + a.width * 0.5 && a.y < p.y) {
+        a.hp -= 4;
+        a.hitFlash = 1;
+        this.createSparks(a.x, a.y, '#38bdf8', 10);
+        if (a.hp <= 0) {
+          sound.playExplosion(false);
+          this.createExplosion(a.x, a.y, a.color, 22);
+          this.stats.score += a.scoreValue;
+          this.alienFighters.splice(ai, 1);
+        }
+      }
+    }
+
     // Damage Boss in rail column
     if (this.boss && Math.abs(this.boss.x - p.x) < this.boss.width * 0.45 && this.boss.y < p.y) {
       if (this.boss.isShielded) {
@@ -2440,6 +2536,13 @@ export class GameEngine {
     // Vaporize all enemy projectiles instantly
     this.enemyProjectiles = [];
 
+    // Vaporize all active alien fighters with cosmic shockwaves
+    for (const a of this.alienFighters) {
+      this.createExplosion(a.x, a.y, a.color, 25);
+      this.stats.score += a.scoreValue;
+    }
+    this.alienFighters = [];
+
     // Damage Boss heavily if active
     if (this.boss && !this.boss.isDying) {
       if (this.boss.isShielded) {
@@ -2621,6 +2724,218 @@ export class GameEngine {
     this.updateForestCosmos(dt);
   }
 
+  private spawnAlienSquadron() {
+    if (this.isMenuAmbient || this.boss) return;
+    const maxAliens = Math.min(8, 2 + this.stats.level);
+    if (this.alienFighters.length >= maxAliens) return;
+
+    // Pick alien type based on level
+    const chosenType: AlienType =
+      this.stats.level >= 3 && Math.random() < 0.35
+        ? 'cruiser'
+        : this.stats.level >= 2 && Math.random() < 0.45
+        ? 'interceptor'
+        : Math.random() < 0.5
+        ? 'fighter'
+        : 'scout';
+
+    const squadSize = chosenType === 'cruiser' ? 1 : Math.min(3, Math.floor(Math.random() * 2) + 2);
+    const startX = Math.random() * (this.width - 240) + 120;
+    const startY = -40;
+
+    for (let i = 0; i < squadSize; i++) {
+      const offsetX = (i - (squadSize - 1) / 2) * 65;
+      const x = Math.max(45, Math.min(this.width - 45, startX + offsetX));
+      const y = startY - i * 35;
+
+      let hp = 1;
+      let width = 38;
+      let height = 36;
+      let color = '#f43f5e';
+      let glowColor = '#fb7185';
+      let scoreValue = 200;
+      let shootInterval = 2.4;
+      let pattern: 'swoop' | 'hover_strafe' | 'dive' | 'escort' = 'swoop';
+      let name = 'ALIEN SCOUT';
+
+      if (chosenType === 'fighter') {
+        hp = 2;
+        width = 44;
+        height = 42;
+        color = '#a855f7';
+        glowColor = '#c084fc';
+        scoreValue = 350;
+        shootInterval = 2.0;
+        pattern = 'hover_strafe';
+        name = 'ALIEN FIGHTER';
+      } else if (chosenType === 'interceptor') {
+        hp = 2;
+        width = 40;
+        height = 46;
+        color = '#00f0ff';
+        glowColor = '#38bdf8';
+        scoreValue = 450;
+        shootInterval = 1.8;
+        pattern = 'dive';
+        name = 'INTERCEPTOR';
+      } else if (chosenType === 'cruiser') {
+        hp = 4;
+        width = 68;
+        height = 60;
+        color = '#f59e0b';
+        glowColor = '#facc15';
+        scoreValue = 1000;
+        shootInterval = 1.4;
+        pattern = 'escort';
+        name = 'ALIEN CRUISER';
+      }
+
+      this.alienFighters.push({
+        id: Math.random().toString(),
+        type: chosenType,
+        name,
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 40,
+        vy: pattern === 'dive' ? 160 : chosenType === 'cruiser' ? 45 : 85,
+        width,
+        height,
+        hp,
+        maxHp: hp,
+        shootCooldown: Math.random() * 1.5 + 0.8,
+        shootInterval,
+        color,
+        glowColor,
+        tilt: 0,
+        enginePhase: Math.random() * Math.PI * 2,
+        hitFlash: 0,
+        pattern,
+        patternPhase: Math.random() * Math.PI * 2,
+        scoreValue,
+      });
+    }
+  }
+
+  private updateAlienFighters(dt: number) {
+    if (this.isMenuAmbient) return;
+
+    // Periodic squadron spawning
+    this.alienSpawnTimer -= dt;
+    if (this.alienSpawnTimer <= 0) {
+      this.alienSpawnTimer = Math.max(3.5, 6.5 - this.stats.level * 0.4);
+      this.spawnAlienSquadron();
+    }
+
+    for (let i = this.alienFighters.length - 1; i >= 0; i--) {
+      const a = this.alienFighters[i];
+      a.enginePhase += dt * 8;
+      a.patternPhase += dt * 2.2;
+      if (a.hitFlash > 0) a.hitFlash -= dt * 6;
+
+      // Update movement pattern
+      if (a.pattern === 'swoop') {
+        a.x += Math.sin(a.patternPhase) * 130 * dt;
+        a.y += a.vy * dt;
+        a.tilt = Math.sin(a.patternPhase) * 0.45;
+      } else if (a.pattern === 'hover_strafe') {
+        if (a.y < 120 + (i % 3) * 35) {
+          a.y += 90 * dt;
+        } else {
+          a.x += Math.sin(a.patternPhase * 1.4) * 160 * dt;
+          a.tilt = Math.sin(a.patternPhase * 1.4) * 0.35;
+        }
+      } else if (a.pattern === 'dive') {
+        a.y += a.vy * dt;
+        const dx = this.player.x - a.x;
+        a.x += Math.sign(dx) * Math.min(Math.abs(dx), 80 * dt);
+        a.tilt = Math.sign(dx) * 0.25;
+      } else if (a.pattern === 'escort') {
+        a.y += a.vy * dt;
+        a.x += Math.sin(a.patternPhase * 0.7) * 45 * dt;
+        a.tilt = Math.sin(a.patternPhase * 0.7) * 0.15;
+      }
+
+      // Screen edge clamping
+      const halfW = a.width / 2;
+      if (a.x < halfW + 10) {
+        a.x = halfW + 10;
+      } else if (a.x > this.width - halfW - 10) {
+        a.x = this.width - halfW - 10;
+      }
+
+      // Engine particle trails
+      if (Math.random() < 0.4) {
+        this.particles.push({
+          x: a.x + (Math.random() - 0.5) * 8,
+          y: a.y - a.height * 0.3,
+          vx: (Math.random() - 0.5) * 15,
+          vy: -Math.random() * 30 - 20,
+          size: Math.random() * 2.5 + 1.2,
+          color: a.glowColor,
+          life: 0,
+          maxLife: 0.22,
+          alpha: 0.85,
+          type: 'spark',
+        });
+      }
+
+      // Alien weapon shooting
+      a.shootCooldown -= dt;
+      if (a.shootCooldown <= 0 && a.y > 20 && a.y < this.height - 120) {
+        a.shootCooldown = a.shootInterval + Math.random() * 0.6;
+        sound.playLaser('normal');
+
+        if (a.type === 'cruiser') {
+          const angles = [-0.25, 0, 0.25];
+          angles.forEach((ang) => {
+            const speed = 250;
+            this.enemyProjectiles.push({
+              id: Math.random().toString(),
+              x: a.x,
+              y: a.y + a.height * 0.45,
+              vx: Math.sin(ang) * speed,
+              vy: Math.cos(ang) * speed,
+              radius: 5.5,
+              color: '#f59e0b',
+              glowColor: '#facc15',
+            });
+          });
+        } else if (a.type === 'fighter') {
+          [-14, 14].forEach((xOff) => {
+            this.enemyProjectiles.push({
+              id: Math.random().toString(),
+              x: a.x + xOff,
+              y: a.y + a.height * 0.4,
+              vx: 0,
+              vy: 290,
+              radius: 4,
+              color: a.color,
+              glowColor: a.glowColor,
+            });
+          });
+        } else {
+          const angle = Math.atan2(this.player.y - a.y, this.player.x - a.x);
+          const speed = 270;
+          this.enemyProjectiles.push({
+            id: Math.random().toString(),
+            x: a.x,
+            y: a.y + a.height * 0.4,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            radius: 4.5,
+            color: a.color,
+            glowColor: a.glowColor,
+          });
+        }
+      }
+
+      // Cull offscreen aliens
+      if (a.y > this.height + 70) {
+        this.alienFighters.splice(i, 1);
+      }
+    }
+  }
+
   private updateTargets(dt: number) {
     const maxTargetsOnScreen = Math.min(6, 3 + Math.floor(this.stats.level / 2));
     this.spawnCooldown -= dt;
@@ -2696,23 +3011,41 @@ export class GameEngine {
         let targetX: number | null = null;
         let targetY: number | null = null;
 
-        // Prioritize correct mission target if on screen
-        const correctTarget = this.targets.find((t) => t.isCorrect && t.y > 0 && t.y < this.height);
-        if (correctTarget) {
-          targetX = correctTarget.x;
-          targetY = correctTarget.y;
-        } else if (this.boss && !this.boss.isDying) {
+        // Smart Target Selection: Prioritize closest alien fighter first so player can fight enemy planes easily!
+        if (this.alienFighters.length > 0) {
+          let closestAlienDist = 999999;
+          for (const a of this.alienFighters) {
+            if (a.y < -30 || a.y > this.height) continue;
+            const dist = Math.hypot(a.x - p.x, a.y - p.y);
+            if (dist < closestAlienDist) {
+              closestAlienDist = dist;
+              targetX = a.x;
+              targetY = a.y;
+            }
+          }
+        }
+
+        if (targetX === null && this.boss && !this.boss.isDying) {
           targetX = this.boss.x;
           targetY = this.boss.y;
-        } else if (this.targets.length > 0) {
-          let closestDist = 999999;
-          for (const t of this.targets) {
-            if (t.y < 0) continue;
-            const dist = Math.hypot(t.x - p.x, t.y - p.y);
-            if (dist < closestDist) {
-              closestDist = dist;
-              targetX = t.x;
-              targetY = t.y;
+        }
+
+        if (targetX === null) {
+          // Prioritize correct mission target if on screen
+          const correctTarget = this.targets.find((t) => t.isCorrect && t.y > 0 && t.y < this.height);
+          if (correctTarget) {
+            targetX = correctTarget.x;
+            targetY = correctTarget.y;
+          } else if (this.targets.length > 0) {
+            let closestDist = 999999;
+            for (const t of this.targets) {
+              if (t.y < 0) continue;
+              const dist = Math.hypot(t.x - p.x, t.y - p.y);
+              if (dist < closestDist) {
+                closestDist = dist;
+                targetX = t.x;
+                targetY = t.y;
+              }
             }
           }
         }
@@ -2814,6 +3147,17 @@ export class GameEngine {
       const ep = this.enemyProjectiles[i];
       ep.x += ep.vx * dt;
       ep.y += ep.vy * dt;
+
+      // Mode Dewa: Divine Aura otomatis membakar peluru musuh sebelum menyentuh pesawat!
+      if (this.isGodMode) {
+        const dx = ep.x - this.player.x;
+        const dy = ep.y - this.player.y;
+        if (Math.hypot(dx, dy) < 72) {
+          this.createSparks(ep.x, ep.y, '#facc15', 6);
+          this.enemyProjectiles.splice(i, 1);
+          continue;
+        }
+      }
 
       if (this.player.invulnerableTimer <= 0) {
         const dx = ep.x - this.player.x;
@@ -2994,6 +3338,44 @@ export class GameEngine {
         continue;
       }
 
+      // Check collision with Alien Fighters
+      for (let ai = this.alienFighters.length - 1; ai >= 0; ai--) {
+        const alien = this.alienFighters[ai];
+        const dx = Math.abs(proj.x - alien.x);
+        const dy = Math.abs(proj.y - alien.y);
+        if (dx < alien.width * 0.45 + proj.radius && dy < alien.height * 0.45 + proj.radius) {
+          if (!proj.piercing) {
+            projConsumed = true;
+          }
+          const dmgMultiplier = this.isGodMode ? 8 : 1;
+          alien.hp -= proj.power * dmgMultiplier;
+          alien.hitFlash = 1.0;
+          this.createSparks(proj.x, proj.y, alien.glowColor, 8);
+          sound.playHit();
+
+          if (alien.hp <= 0) {
+            sound.playExplosion(alien.type === 'cruiser');
+            this.createExplosion(alien.x, alien.y, alien.color, alien.type === 'cruiser' ? 35 : 22);
+            this.stats.score += alien.scoreValue * (this.isGodMode ? 2 : 1);
+            this.player.ultimateEnergy = Math.min(100, this.player.ultimateEnergy + (this.isGodMode ? 20 : 8));
+            this.stats.ultimateEnergy = Math.floor(this.player.ultimateEnergy);
+            this.stats.novaStrikeReady = this.player.ultimateEnergy >= 100;
+            this.stats.galaxyBreakerReady = this.player.ultimateEnergy >= 100;
+            this.addFloatingText(alien.x, alien.y - 15, `+${alien.scoreValue} ${alien.name}!`, alien.glowColor, 1.3);
+            if (Math.random() < (this.isGodMode ? 0.4 : 0.25)) {
+              this.spawnPowerUp(alien.x, alien.y);
+            }
+            this.alienFighters.splice(ai, 1);
+          }
+          break;
+        }
+      }
+
+      if (projConsumed) {
+        this.projectiles.splice(pi, 1);
+        continue;
+      }
+
       for (let ti = this.targets.length - 1; ti >= 0; ti--) {
         const target = this.targets[ti];
         const dx = proj.x - target.x;
@@ -3034,6 +3416,25 @@ export class GameEngine {
 
         if (dist < target.radius + this.player.width * 0.35) {
           this.handlePlayerCollision(target, ti);
+          break;
+        }
+      }
+
+      for (let ai = this.alienFighters.length - 1; ai >= 0; ai--) {
+        const alien = this.alienFighters[ai];
+        const dist = Math.hypot(this.player.x - alien.x, this.player.y - alien.y);
+        if (dist < alien.width * 0.4 + this.player.width * 0.35) {
+          this.createExplosion(alien.x, alien.y, alien.color, 25);
+          this.alienFighters.splice(ai, 1);
+          if (this.isGodMode) {
+            sound.playExplosion(true);
+            this.createRing(this.player.x, this.player.y, '#facc15', 55);
+            this.triggerScreenShake(3, 0.15);
+            this.stats.score += alien.scoreValue * 2;
+            this.addFloatingText(this.player.x, this.player.y - 30, '⚡ ALIEN HANCUR TERBENTUR PERISAI DEWA!', '#facc15', 1.4);
+          } else {
+            this.handlePlayerHit('TABRAKAN PESAWAT ALIEN');
+          }
           break;
         }
       }
@@ -3181,6 +3582,23 @@ export class GameEngine {
   private handlePlayerHit(sourceLabel: string) {
     if (this.player.invulnerableTimer > 0) return;
 
+    // Mode Dewa: Unlimited Lives & Divine Energy Deflection
+    if (this.isGodMode) {
+      this.player.invulnerableTimer = 0.8;
+      this.stats.lives = 999;
+      this.stats.maxLives = 999;
+      sound.playHit();
+      this.triggerScreenShake(3, 0.15);
+      this.createSparks(this.player.x, this.player.y, '#facc15', 25);
+      this.createSparks(this.player.x, this.player.y, '#00f0ff', 20);
+      this.createRing(this.player.x, this.player.y, '#facc15', 65);
+      // Vaporize any nearby enemy bullets in shockwave
+      this.enemyProjectiles = this.enemyProjectiles.filter((p) => Math.hypot(p.x - this.player.x, p.y - this.player.y) > 180);
+      this.addFloatingText(this.player.x, this.player.y - 40, '🛡️ KEBAL! (MODE DEWA ∞ TAK TERBATAS)', '#facc15', 1.5);
+      this.callbacks.onStatsUpdate(this.stats);
+      return;
+    }
+
     if (this.activePowerUps.shieldActive || this.player.shieldHp > 0) {
       this.activePowerUps.shieldActive = false;
       this.player.shieldHp = 0;
@@ -3266,6 +3684,16 @@ export class GameEngine {
   }
 
   private gameOver() {
+    if (this.isGodMode) {
+      this.stats.lives = 999;
+      this.stats.maxLives = 999;
+      this.stats.accuracyRemainingChances = 20;
+      this.player.invulnerableTimer = 2.0;
+      this.addFloatingText(this.width / 2, this.height * 0.4, '🛡️ PERISAI DEWA MENYELAMATKAN PESAWAT! (NYAWA ∞)', '#facc15', 1.8);
+      this.callbacks.onStatsUpdate(this.stats);
+      return;
+    }
+
     this.isRunning = false;
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
@@ -3406,15 +3834,25 @@ export class GameEngine {
 
     const world = this.stats.currentWorld;
 
-    // 1. Rich Multi-Tone Cosmic Space Background Gradient
+    // 1. Rich Multi-Tone Cosmic Space / Bright Daylight Background Gradient
     const bgGrad = ctx.createLinearGradient(0, 0, 0, this.height);
-    bgGrad.addColorStop(0, world.bgGradStart);
-    bgGrad.addColorStop(0.25, '#0c1435');
-    bgGrad.addColorStop(0.5, '#180a2e');
-    bgGrad.addColorStop(0.75, '#042238');
-    bgGrad.addColorStop(1, world.bgGradEnd);
+    if (world.isBrightTheme) {
+      bgGrad.addColorStop(0, world.bgGradStart);
+      bgGrad.addColorStop(0.28, world.bgMidColor1 || '#fef08a');
+      bgGrad.addColorStop(0.65, world.bgMidColor2 || '#f59e0b');
+      bgGrad.addColorStop(1, world.bgGradEnd);
+    } else {
+      bgGrad.addColorStop(0, world.bgGradStart);
+      bgGrad.addColorStop(0.25, world.bgMidColor1 || '#0c1435');
+      bgGrad.addColorStop(0.5, world.bgMidColor2 || '#180a2e');
+      bgGrad.addColorStop(0.75, '#042238');
+      bgGrad.addColorStop(1, world.bgGradEnd);
+    }
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, this.width, this.height);
+
+    // 1a. Bright Daylight Atmospheric Features (Giant Sun, Lunar Horizon, Morning Dawn)
+    this.renderBrightAtmosphere(ctx);
 
     // 1b. PS5 Cinematic 3D Camera Roll Banking (vanishing point horizon pivot)
     if (this.is3DVisualEnabled && Math.abs(this.cameraRoll) > 0.0005) {
@@ -3498,6 +3936,9 @@ export class GameEngine {
       if (this.boss) {
         this.renderBoss(ctx);
       }
+
+      // 6b. Active Alien Fighter Squadrons
+      this.renderAlienFighters(ctx);
 
       // 7. Targets (Letter Drones / Crystal Cores / Asteroids)
       this.renderTargets(ctx);
@@ -3836,6 +4277,330 @@ export class GameEngine {
     }
 
     ctx.restore();
+  }
+
+  // ==================== BRIGHT DAYLIGHT ATMOSPHERIC FEATURES ====================
+  private renderBrightAtmosphere(ctx: CanvasRenderingContext2D) {
+    const world = this.stats.currentWorld;
+    if (!world.isBrightTheme) return;
+
+    ctx.save();
+
+    if (world.id === 1) {
+      // ☀️ MATAHARI (SOLAR RADIANCE) - Blazing Daylight Sun with Corona Rays & Solar Prominences
+      const sunX = this.width / 2;
+      const sunY = -45;
+      const sunRad = Math.min(190, this.width * 0.28);
+
+      // Rotating Solar Corona Sunbeams
+      const rays = 12;
+      for (let r = 0; r < rays; r++) {
+        const ang = (r * Math.PI) / (rays / 2) + Date.now() * 0.0006;
+        const rGrad = ctx.createLinearGradient(
+          sunX,
+          sunY,
+          sunX + Math.cos(ang) * (this.height * 0.95),
+          sunY + Math.sin(ang) * (this.height * 0.95)
+        );
+        rGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+        rGrad.addColorStop(0.25, 'rgba(254, 240, 138, 0.25)');
+        rGrad.addColorStop(0.7, 'rgba(245, 158, 11, 0.12)');
+        rGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = rGrad;
+        ctx.beginPath();
+        ctx.moveTo(sunX, sunY);
+        ctx.lineTo(sunX + Math.cos(ang - 0.14) * this.height * 0.95, sunY + Math.sin(ang - 0.14) * this.height * 0.95);
+        ctx.lineTo(sunX + Math.cos(ang + 0.14) * this.height * 0.95, sunY + Math.sin(ang + 0.14) * this.height * 0.95);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Blazing Solar Photosphere Disk
+      const diskGrad = ctx.createRadialGradient(sunX, sunY, sunRad * 0.2, sunX, sunY, sunRad * 1.55);
+      diskGrad.addColorStop(0, '#ffffff');
+      diskGrad.addColorStop(0.3, '#fef08a');
+      diskGrad.addColorStop(0.65, '#f59e0b');
+      diskGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+      ctx.fillStyle = diskGrad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunRad * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Magnetic Solar Flares & Looping Arches
+      ctx.strokeStyle = 'rgba(254, 240, 138, 0.75)';
+      ctx.lineWidth = 2.5;
+      for (let f = 0; f < 4; f++) {
+        const fAng = (f * Math.PI) / 2.5 + Math.sin(Date.now() * 0.002 + f) * 0.3;
+        const fx = sunX + Math.cos(fAng) * (sunRad * 0.85);
+        const fy = sunY + Math.sin(fAng) * (sunRad * 0.85);
+        ctx.beginPath();
+        ctx.arc(fx, fy, 24, fAng - 0.6, fAng + 0.6);
+        ctx.stroke();
+      }
+
+    } else if (world.id === 2) {
+      // 🌕 BULAN (LUNAR DAYLIGHT) - Radiant Earth-rise in Brilliant Silver Crater Horizon
+      const earthX = this.width * 0.78;
+      const earthY = 95;
+      const earthRad = Math.min(82, this.width * 0.13);
+
+      // Earth Atmosphere Outer Cyan Halo
+      const earthHalo = ctx.createRadialGradient(earthX, earthY, earthRad * 0.8, earthX, earthY, earthRad * 1.45);
+      earthHalo.addColorStop(0, 'rgba(56, 189, 248, 0.6)');
+      earthHalo.addColorStop(0.5, 'rgba(2, 132, 199, 0.3)');
+      earthHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = earthHalo;
+      ctx.beginPath();
+      ctx.arc(earthX, earthY, earthRad * 1.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Earth Blue Ocean Sphere
+      const earthGrad = ctx.createRadialGradient(
+        earthX - earthRad * 0.3,
+        earthY - earthRad * 0.3,
+        earthRad * 0.1,
+        earthX,
+        earthY,
+        earthRad
+      );
+      earthGrad.addColorStop(0, '#ffffff');
+      earthGrad.addColorStop(0.35, '#38bdf8');
+      earthGrad.addColorStop(0.7, '#0284c7');
+      earthGrad.addColorStop(1, '#0c4a6e');
+      ctx.fillStyle = earthGrad;
+      ctx.beginPath();
+      ctx.arc(earthX, earthY, earthRad, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Green Continents & Swirling White Clouds
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(earthX - 10, earthY - 8, earthRad * 0.45, earthRad * 0.28, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.beginPath();
+      ctx.ellipse(earthX + 10, earthY + 12, earthRad * 0.4, earthRad * 0.18, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Undulating Silver Lunar Crater Horizons (Lower Third)
+      const craterY = this.height * 0.64;
+      const craterGrad = ctx.createLinearGradient(0, craterY, 0, this.height);
+      craterGrad.addColorStop(0, 'rgba(226, 232, 240, 0.45)');
+      craterGrad.addColorStop(0.35, 'rgba(148, 163, 184, 0.32)');
+      craterGrad.addColorStop(1, 'rgba(100, 116, 139, 0.18)');
+      ctx.fillStyle = craterGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, this.height);
+      for (let cx = 0; cx <= this.width; cx += 25) {
+        const cy = craterY + Math.sin(cx * 0.012) * 20 + Math.cos(cx * 0.024) * 12;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.lineTo(this.width, this.height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Platinum Rim Highlight
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.65)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      for (let cx = 0; cx <= this.width; cx += 25) {
+        const cy = craterY + Math.sin(cx * 0.012) * 20 + Math.cos(cx * 0.024) * 12;
+        if (cx === 0) ctx.moveTo(cx, cy);
+        else ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+
+    } else if (world.id === 3) {
+      // 🌅 LANGIT FAJAR (CELESTIAL DAWN) - Emerald Sunrise Sunbeams & Golden Aurora
+      const dawnX = this.width * 0.25;
+      const dawnY = 0;
+      for (let r = 0; r < 6; r++) {
+        const ang = (r * Math.PI) / 8 + 0.2;
+        const dGrad = ctx.createLinearGradient(
+          dawnX,
+          dawnY,
+          dawnX + Math.cos(ang) * this.height,
+          dawnY + Math.sin(ang) * this.height
+        );
+        dGrad.addColorStop(0, 'rgba(254, 240, 138, 0.4)');
+        dGrad.addColorStop(0.4, 'rgba(52, 211, 153, 0.22)');
+        dGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = dGrad;
+        ctx.beginPath();
+        ctx.moveTo(dawnX, dawnY);
+        ctx.lineTo(dawnX + Math.cos(ang - 0.15) * this.height, dawnY + Math.sin(ang - 0.15) * this.height);
+        ctx.lineTo(dawnX + Math.cos(ang + 0.15) * this.height, dawnY + Math.sin(ang + 0.15) * this.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+    } else if (world.id === 6) {
+      // 🏙️ METROPOLIS ANGKASA - Cyber Ivory Gold City Skyline
+      const cityY = this.height * 0.68;
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.25)';
+      const buildingWidth = 35;
+      for (let bx = 0; bx < this.width; bx += buildingWidth + 8) {
+        const h = 45 + Math.sin(bx * 0.04) * 35 + ((bx * 7) % 30);
+        ctx.fillRect(bx, cityY - h, buildingWidth, h + (this.height - cityY));
+        // Glowing spire beacon antenna
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(bx + buildingWidth / 2, cityY - h);
+        ctx.lineTo(bx + buildingWidth / 2, cityY - h - 18);
+        ctx.stroke();
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath();
+        ctx.arc(bx + buildingWidth / 2, cityY - h - 18, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.25)';
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // ==================== ALIEN FIGHTER SQUADRON RENDERING ====================
+  private renderAlienFighters(ctx: CanvasRenderingContext2D) {
+    for (const a of this.alienFighters) {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.tilt);
+
+      if (a.hitFlash > 0) {
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 18;
+      }
+
+      if (a.type === 'cruiser') {
+        // Heavy Cruiser Dreadnought
+        const hullGrad = ctx.createLinearGradient(0, -a.height / 2, 0, a.height / 2);
+        hullGrad.addColorStop(0, a.hitFlash > 0 ? '#ffffff' : '#334155');
+        hullGrad.addColorStop(0.5, a.hitFlash > 0 ? '#ffffff' : '#1e293b');
+        hullGrad.addColorStop(1, a.hitFlash > 0 ? '#ffffff' : '#0f172a');
+        ctx.fillStyle = hullGrad;
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 2.2;
+
+        ctx.beginPath();
+        ctx.moveTo(0, a.height * 0.55); // Nose
+        ctx.lineTo(a.width * 0.45, a.height * 0.2);
+        ctx.lineTo(a.width * 0.5, -a.height * 0.35);
+        ctx.lineTo(a.width * 0.25, -a.height * 0.5);
+        ctx.lineTo(-a.width * 0.25, -a.height * 0.5);
+        ctx.lineTo(-a.width * 0.5, -a.height * 0.35);
+        ctx.lineTo(-a.width * 0.45, a.height * 0.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Pulsating glowing energy core
+        const corePulse = (Math.sin(a.enginePhase) + 1) * 0.5;
+        ctx.fillStyle = a.glowColor;
+        ctx.shadowColor = a.glowColor;
+        ctx.shadowBlur = 14 + corePulse * 6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 9 + corePulse * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Wing cannon pods
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(-a.width * 0.42, 0, 5, 12);
+        ctx.fillRect(a.width * 0.42 - 5, 0, 5, 12);
+
+      } else if (a.type === 'fighter') {
+        // Twin-wing aggressive fighter
+        const wingGrad = ctx.createLinearGradient(0, -a.height / 2, 0, a.height / 2);
+        wingGrad.addColorStop(0, a.hitFlash > 0 ? '#ffffff' : '#2e1065');
+        wingGrad.addColorStop(0.5, a.hitFlash > 0 ? '#ffffff' : '#4c1d95');
+        wingGrad.addColorStop(1, a.hitFlash > 0 ? '#ffffff' : '#1e1b4b');
+        ctx.fillStyle = wingGrad;
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 1.8;
+
+        ctx.beginPath();
+        ctx.moveTo(0, a.height * 0.5);
+        ctx.lineTo(a.width * 0.22, a.height * 0.1);
+        ctx.lineTo(a.width * 0.48, -a.height * 0.25);
+        ctx.lineTo(a.width * 0.42, -a.height * 0.48);
+        ctx.lineTo(a.width * 0.12, -a.height * 0.35);
+        ctx.lineTo(0, -a.height * 0.2);
+        ctx.lineTo(-a.width * 0.12, -a.height * 0.35);
+        ctx.lineTo(-a.width * 0.42, -a.height * 0.48);
+        ctx.lineTo(-a.width * 0.48, -a.height * 0.25);
+        ctx.lineTo(-a.width * 0.22, a.height * 0.1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing violet visor cockpit
+        ctx.fillStyle = a.glowColor;
+        ctx.shadowColor = a.glowColor;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.ellipse(0, a.height * 0.15, 5, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+      } else if (a.type === 'interceptor') {
+        // Forward swept dart interceptor
+        ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : '#083344';
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 1.8;
+
+        ctx.beginPath();
+        ctx.moveTo(0, a.height * 0.52);
+        ctx.lineTo(a.width * 0.46, a.height * 0.25);
+        ctx.lineTo(a.width * 0.35, -a.height * 0.45);
+        ctx.lineTo(0, -a.height * 0.2);
+        ctx.lineTo(-a.width * 0.35, -a.height * 0.45);
+        ctx.lineTo(-a.width * 0.46, a.height * 0.25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Cyan cockpit slit
+        ctx.fillStyle = a.glowColor;
+        ctx.shadowColor = a.glowColor;
+        ctx.shadowBlur = 8;
+        ctx.fillRect(-3, a.height * 0.1, 6, 8);
+
+      } else {
+        // Scout nimble delta craft
+        ctx.fillStyle = a.hitFlash > 0 ? '#ffffff' : '#450a0a';
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 1.6;
+
+        ctx.beginPath();
+        ctx.moveTo(0, a.height * 0.48);
+        ctx.lineTo(a.width * 0.45, -a.height * 0.4);
+        ctx.lineTo(0, -a.height * 0.22);
+        ctx.lineTo(-a.width * 0.45, -a.height * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Red sensor eye
+        ctx.fillStyle = a.glowColor;
+        ctx.shadowColor = a.glowColor;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, a.height * 0.1, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Small health bar if damaged
+      if (a.hp < a.maxHp) {
+        const barW = a.width * 0.9;
+        const barH = 3.5;
+        const barY = -a.height * 0.55 - 6;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(-barW / 2, barY, barW, barH);
+        ctx.fillStyle = a.hp / a.maxHp > 0.4 ? a.glowColor : '#ef4444';
+        ctx.fillRect(-barW / 2, barY, barW * (a.hp / a.maxHp), barH);
+      }
+
+      ctx.restore();
+    }
   }
 
   private renderSpiralGalaxy(ctx: CanvasRenderingContext2D, sg: SpiralGalaxyEntity) {
@@ -4340,6 +5105,40 @@ export class GameEngine {
       }
       ctx.closePath();
       ctx.stroke();
+    }
+
+    // 9b. Mode Dewa: Divine Golden Aura Barrier with Rotating Sacred Runes & Halo
+    if (this.isGodMode) {
+      const auraPulse = (Math.sin(Date.now() * 0.005) + 1) * 0.5;
+      const auraGrad = ctx.createRadialGradient(0, -2, 20, 0, -2, 52);
+      auraGrad.addColorStop(0, 'rgba(250, 204, 21, 0.06)');
+      auraGrad.addColorStop(0.7, `rgba(250, 204, 21, ${0.16 + auraPulse * 0.12})`);
+      auraGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(0, -2, 52, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Outer glowing golden ring
+      ctx.strokeStyle = `rgba(250, 204, 21, ${0.65 + auraPulse * 0.3})`;
+      ctx.lineWidth = 2.0;
+      ctx.shadowColor = '#facc15';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, -2, 45 + auraPulse * 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Rotating sacred sparkles
+      for (let r = 0; r < 4; r++) {
+        const rAng = (r * Math.PI) / 2 + Date.now() * 0.003;
+        const rx = Math.cos(rAng) * 45;
+        const ry = Math.sin(rAng) * 45 - 2;
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
     }
 
     // 10. Ultimate Cosmic Aura (when Galaxy Breaker is 100% ready)
