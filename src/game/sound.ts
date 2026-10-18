@@ -1028,6 +1028,34 @@ class SoundEngine {
     this.playHeroicShoutChime();
   }
 
+  /**
+   * Vocalizes target letter / word pronunciation for active learning
+   */
+  public speakTargetPronunciation(text: string, subject: string = 'hijaiyah') {
+    if (this.isMuted) return;
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (subject === 'hijaiyah') {
+          utterance.lang = 'ar-SA';
+          utterance.rate = 0.9;
+        } else if (subject === 'inggris') {
+          utterance.lang = 'en-US';
+          utterance.rate = 0.95;
+        } else {
+          utterance.lang = 'id-ID';
+          utterance.rate = 1.0;
+        }
+        utterance.pitch = 1.05;
+        utterance.volume = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   public playForestPower() {
     if (this.isMuted) return;
     try {

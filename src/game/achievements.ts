@@ -145,8 +145,8 @@ class AchievementManager {
     return false;
   }
 
-  public isSkinUnlocked(skinId: ShipSkinId): boolean {
-    if (skinId === 'pioneer') return true;
+  public isSkinUnlocked(skinId: ShipSkinId, isGodMode?: boolean): boolean {
+    if (skinId === 'pioneer' || isGodMode) return true;
     if (this.saveData.unlockedSkins?.includes(skinId)) return true;
 
     // Dynamic milestone unlocks
@@ -160,6 +160,14 @@ class AchievementManager {
     }
     if (skinId === 'titan' && (this.saveData.unlockedAchievements.includes('sharpshooter') || this.saveData.bossesDefeated >= 1)) {
       this.unlockSkin('titan');
+      return true;
+    }
+    if (skinId === 'valkyrie' && (this.saveData.highScores.campaign >= 2000 || this.saveData.totalTargetsDestroyed >= 15)) {
+      this.unlockSkin('valkyrie');
+      return true;
+    }
+    if (skinId === 'apocalypse' && (this.saveData.bossesDefeated >= 1 || this.saveData.highScores.campaign >= 4000)) {
+      this.unlockSkin('apocalypse');
       return true;
     }
 

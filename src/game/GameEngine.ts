@@ -29,6 +29,7 @@ import {
   PowerUpType,
   ProjectileEntity,
   ShipSkinId,
+  SpaceHazardEntity,
   SpiralGalaxyEntity,
   StarEntity,
   TargetEntity,
@@ -131,17 +132,27 @@ export class GameEngine {
   // Active Alien Fighter Squadrons
   private alienFighters: AlienFighterEntity[] = [];
   private alienSpawnTimer: number = 0;
+  // Dynamic Space Hazards & Obstacles
+  private spaceHazards: SpaceHazardEntity[] = [];
+  private hazardSpawnTimer: number = 3.5;
 
   // Used weapons tracker for achievement
   private usedWeapons: Set<WeaponType> = new Set(['standard']);
   private lastJurusUsed: JurusId | null = null;
   private lastJurusTime: number = 0;
-  // 3D Perspective Arena & PS5 Cinematic Depth Engine
+  // PS5 Cinematic 3D Depth Engine & 6DOF Camera System
   private gridPhase: number = 0;
   private gridScroll: number = 0;
   private is3DVisualEnabled: boolean = true;
   private cameraRoll: number = 0;
   private targetCameraRoll: number = 0;
+  private cameraPitch: number = 0;
+  private targetCameraPitch: number = 0;
+  private cameraZoom: number = 1.0;
+  private targetCameraZoom: number = 1.0;
+  private cameraPanX: number = 0;
+  private chromaticAberrationAlpha: number = 0;
+  private speedLinesPhase: number = 0;
   private anamorphicFlareAlpha: number = 0;
   private isGodMode: boolean = true; // Mode Dewa: Nyawa tak terbatas & kekuatan super
 
@@ -289,12 +300,6 @@ export class GameEngine {
     this.resizeCanvas();
     this.initCosmos();
     this.bindEvents();
-  }
-
-  public setSkin(skinId: ShipSkinId) {
-    this.player.skin = skinId;
-    this.stats.shipSkin = skinId;
-    achievementManager.selectSkin(skinId);
   }
 
   public setMode(newMode: GameMode) {
@@ -703,6 +708,27 @@ export class GameEngine {
     return this.isGodMode;
   }
 
+  public setSkin(skinId: ShipSkinId) {
+    this.player.skin = skinId;
+    this.stats.shipSkin = skinId;
+    achievementManager.selectSkin(skinId);
+    const skinData = SHIP_SKINS.find((s) => s.id === skinId);
+    if (skinData) {
+      this.addFloatingText(this.player.x, this.player.y - 45, `✈️ PESAWAT: ${skinData.name}!`, skinData.primaryColor, 1.5);
+      this.createSparks(this.player.x, this.player.y, skinData.primaryColor, 20);
+      sound.playClick();
+    }
+    this.callbacks.onStatsUpdate(this.stats);
+  }
+
+  public cycleNextSkin(): ShipSkinId {
+    const allSkins = SHIP_SKINS.map((s) => s.id);
+    const currentIdx = allSkins.indexOf(this.player.skin);
+    const nextSkin = allSkins[(currentIdx + 1) % allSkins.length];
+    this.setSkin(nextSkin);
+    return nextSkin;
+  }
+
   public triggerOverchargeBurst() {
     if (!this.isRunning || this.isPaused) return;
     const p = this.player;
@@ -824,6 +850,9 @@ export class GameEngine {
     this.floatingTexts = [];
     this.powerUps = [];
     this.meteors = [];
+    this.alienFighters = [];
+    this.spaceHazards = [];
+    this.hazardSpawnTimer = 3.0;
     this.boss = null;
     this.survivalTimer = 0;
 
@@ -937,6 +966,12 @@ export class GameEngine {
     this.shakeIntensity = 0;
     this.cameraRoll = 0;
     this.targetCameraRoll = 0;
+    this.cameraPitch = 0;
+    this.targetCameraPitch = 0;
+    this.cameraZoom = 1.0;
+    this.targetCameraZoom = 1.0;
+    this.cameraPanX = 0;
+    this.chromaticAberrationAlpha = 0;
     this.anamorphicFlareAlpha = 0;
     this.player.jurusCooldowns = {
       double_photon: 0,
@@ -1404,6 +1439,7 @@ export class GameEngine {
 
     this.updateTargets(dt * gameSpeedMultiplier);
     this.updateAlienFighters(dt * gameSpeedMultiplier);
+    this.updateSpaceHazards(dt * gameSpeedMultiplier);
     this.updateProjectiles(dt);
     this.updateEnemyProjectiles(dt);
     this.updatePowerUps(dt);
@@ -1480,10 +1516,36 @@ export class GameEngine {
       });
     }
 
-    const targetTilt = (p.vx / p.speed) * 0.4;
+    const targetTilt = (p.vx / p.speed) * 0.45;
     p.tilt += (targetTilt - p.tilt) * Math.min(dt * 12, 1);
-    this.targetCameraRoll = p.tilt * 0.045;
-    this.cameraRoll += (this.targetCameraRoll - this.cameraRoll) * Math.min(dt * 8, 1);
+
+    // PS5 3D Dynamic 6DOF Camera Tracking (Banking, Pitch, FOV Zoom, Parallax Pan)
+    this.targetCameraRoll = p.tilt * 0.09;
+    this.cameraRoll += (this.targetCameraRoll - this.cameraRoll) * Math.min(dt * 7, 1);
+
+    const pitchFactor = (p.y - this.height * 0.72) / (this.height * 0.5);
+    this.targetCameraPitch = Math.max(-0.06, Math.min(0.06, pitchFactor * 0.05 - p.recoilOffset * 0.003));
+    this.cameraPitch += (this.targetCameraPitch - this.cameraPitch) * Math.min(dt * 6, 1);
+
+    const targetPan = (p.x - this.width / 2) * 0.05;
+    this.cameraPanX += (targetPan - this.cameraPanX) * Math.min(dt * 5, 1);
+
+    if (p.dashTimer > 0) {
+      this.targetCameraZoom = 0.94; // Dynamic wide-angle speed rush
+      this.speedLinesPhase += dt * 38;
+      this.chromaticAberrationAlpha = Math.min(1.0, this.chromaticAberrationAlpha + dt * 4);
+    } else if (this.activePowerUps.slowmoTimer > 0) {
+      this.targetCameraZoom = 1.05; // Cinematic bullet-time focus
+      this.speedLinesPhase += dt * 4;
+    } else {
+      this.targetCameraZoom = 1.0;
+      this.speedLinesPhase += dt * 14;
+    }
+    this.cameraZoom += (this.targetCameraZoom - this.cameraZoom) * Math.min(dt * 6, 1);
+
+    if (this.chromaticAberrationAlpha > 0) {
+      this.chromaticAberrationAlpha = Math.max(0, this.chromaticAberrationAlpha - dt * 2.8);
+    }
     if (this.anamorphicFlareAlpha > 0) {
       this.anamorphicFlareAlpha = Math.max(0, this.anamorphicFlareAlpha - dt * 2.2);
     }
@@ -1844,8 +1906,8 @@ export class GameEngine {
       }
     }
 
-    // MODE DEWA: Peluru Pintar Anti-Pesawat Otomatis Memburu Pesawat Musuh & Boss
-    if (this.isGodMode) {
+    // MODE DEWA: Peluru Pintar Anti-Pesawat HANYA memburu pesawat alien tempur & boss (Huruf edukasi harus dibidik manual!)
+    if (this.isGodMode && (this.alienFighters.length > 0 || (this.boss && !this.boss.isDying))) {
       [-26, 26].forEach((xOff, idx) => {
         this.projectiles.push({
           id: Math.random().toString(),
@@ -2936,6 +2998,219 @@ export class GameEngine {
     }
   }
 
+  private spawnHazard() {
+    if (this.isMenuAmbient || this.boss) return;
+    if (this.spaceHazards.length >= 3) return;
+
+    const r = Math.random();
+    const id = Math.random().toString();
+    const vyBase = 65 + this.stats.level * 8;
+
+    if (r < 0.45) {
+      // 1. Pagar Laser Listrik Kosmik (Laser Barrier Fence)
+      const fenceWidth = Math.min(180, Math.max(120, this.width * 0.38));
+      const minX = fenceWidth / 2 + 30;
+      const maxX = this.width - fenceWidth / 2 - 30;
+      const x = Math.random() * (maxX - minX) + minX;
+      this.spaceHazards.push({
+        id,
+        type: 'laser_fence',
+        name: 'PAGAR LASER KOSMIK',
+        x,
+        y: -40,
+        vx: 0,
+        vy: vyBase * 0.9,
+        width: fenceWidth,
+        height: 24,
+        radius: 16,
+        hp: 4,
+        maxHp: 4,
+        hitFlash: 0,
+        angle: 0,
+        rotSpeed: 0,
+        phase: 0,
+        color: '#00f0ff',
+        glowColor: '#38bdf8',
+        scoreValue: 350,
+        fenceWidth,
+        leftEmitterHp: 2,
+        rightEmitterHp: 2,
+        leftAlive: true,
+        rightAlive: true,
+        overloadTimer: 0,
+      });
+    } else if (r < 0.8) {
+      // 2. Asteroid Kristal Magma Destructible
+      const rad = Math.floor(Math.random() * 8) + 24;
+      const x = Math.random() * (this.width - rad * 2 - 40) + rad + 20;
+      this.spaceHazards.push({
+        id,
+        type: 'magma_asteroid',
+        name: 'ASTEROID MAGMA PURBA',
+        x,
+        y: -rad - 20,
+        vx: (Math.random() - 0.5) * 35,
+        vy: vyBase * 1.15,
+        width: rad * 2,
+        height: rad * 2,
+        radius: rad,
+        hp: 3,
+        maxHp: 3,
+        hitFlash: 0,
+        angle: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 1.8,
+        phase: Math.random() * Math.PI * 2,
+        color: '#f97316',
+        glowColor: '#ea580c',
+        scoreValue: 400,
+      });
+    } else {
+      // 3. Pusaran Gravitasi Nebula
+      const rad = 38;
+      const x = Math.random() * (this.width - rad * 2 - 60) + rad + 30;
+      this.spaceHazards.push({
+        id,
+        type: 'gravity_vortex',
+        name: 'PUSARAN ANOMALI GRAVITASI',
+        x,
+        y: -rad - 20,
+        vx: 0,
+        vy: vyBase * 0.7,
+        width: rad * 2,
+        height: rad * 2,
+        radius: rad,
+        hp: 999,
+        maxHp: 999,
+        hitFlash: 0,
+        angle: 0,
+        rotSpeed: 2.5,
+        phase: 0,
+        color: '#a855f7',
+        glowColor: '#ec4899',
+        scoreValue: 150,
+      });
+    }
+  }
+
+  private updateSpaceHazards(dt: number) {
+    if (this.isMenuAmbient) return;
+
+    this.hazardSpawnTimer -= dt;
+    if (this.hazardSpawnTimer <= 0) {
+      this.hazardSpawnTimer = Math.max(3.2, 5.5 - this.stats.level * 0.3);
+      this.spawnHazard();
+    }
+
+    for (let i = this.spaceHazards.length - 1; i >= 0; i--) {
+      const h = this.spaceHazards[i];
+      h.y += h.vy * dt;
+      h.x += h.vx * dt;
+      h.phase += dt * 4;
+      h.angle += h.rotSpeed * dt;
+      if (h.hitFlash > 0) h.hitFlash -= dt * 6;
+
+      // Handle Laser Fence
+      if (h.type === 'laser_fence') {
+        const halfF = (h.fenceWidth || 140) / 2;
+        const beamActive = h.leftAlive && h.rightAlive;
+
+        // If one emitter was destroyed, short-circuit
+        if (!beamActive && h.overloadTimer !== undefined) {
+          h.overloadTimer += dt;
+          if (Math.random() < 0.6) {
+            this.createSparks(h.x + (Math.random() - 0.5) * (h.fenceWidth || 140), h.y, '#38bdf8', 4);
+          }
+          if (h.overloadTimer > 0.4) {
+            this.spaceHazards.splice(i, 1);
+            continue;
+          }
+        }
+
+        // Particle sparks along the electric beam
+        if (beamActive && Math.random() < 0.5) {
+          const sparkX = h.x - halfF + Math.random() * (halfF * 2);
+          this.particles.push({
+            x: sparkX,
+            y: h.y + (Math.random() - 0.5) * 8,
+            vx: (Math.random() - 0.5) * 30,
+            vy: (Math.random() - 0.5) * 30,
+            size: Math.random() * 2 + 1,
+            color: '#00f0ff',
+            life: 0,
+            maxLife: 0.15,
+            alpha: 0.9,
+            type: 'spark',
+          });
+        }
+
+        // Player collision with active beam
+        if (beamActive && this.player.invulnerableTimer <= 0) {
+          if (Math.abs(this.player.y - h.y) < 20 && this.player.x > h.x - halfF - 10 && this.player.x < h.x + halfF + 10) {
+            if (this.isGodMode) {
+              sound.playHit();
+              this.createRing(this.player.x, this.player.y, '#facc15', 50);
+              this.addFloatingText(this.player.x, this.player.y - 25, '⚡ PAGAR LASER TERTANGKIS PERISAI DEWA!', '#facc15', 1.3);
+            } else if (this.player.dashTimer > 0) {
+              this.addFloatingText(this.player.x, this.player.y - 25, '⚡ DASH BYPASS TEMBUS!', '#38bdf8', 1.3);
+            } else {
+              this.handlePlayerHit('PAGAR LASER KOSMIK');
+            }
+          }
+        }
+      }
+
+      // Handle Magma Asteroid
+      if (h.type === 'magma_asteroid') {
+        if (Math.random() < 0.3) {
+          this.particles.push({
+            x: h.x + (Math.random() - 0.5) * h.radius,
+            y: h.y - h.radius * 0.4,
+            vx: (Math.random() - 0.5) * 20,
+            vy: -Math.random() * 40 - 20,
+            size: Math.random() * 2.5 + 1.2,
+            color: '#f97316',
+            life: 0,
+            maxLife: 0.25,
+            alpha: 0.8,
+            type: 'spark',
+          });
+        }
+
+        if (this.player.invulnerableTimer <= 0) {
+          const dist = Math.hypot(this.player.x - h.x, this.player.y - h.y);
+          if (dist < h.radius + this.player.width * 0.35) {
+            this.createExplosion(h.x, h.y, h.color, 24);
+            this.spaceHazards.splice(i, 1);
+            if (this.isGodMode) {
+              sound.playExplosion(true);
+              this.createRing(this.player.x, this.player.y, '#facc15', 55);
+              this.addFloatingText(this.player.x, this.player.y - 30, '⚡ ASTEROID HANCUR OLEH PERISAI DEWA!', '#facc15', 1.4);
+            } else {
+              this.handlePlayerHit('TABRAKAN ASTEROID MAGMA');
+            }
+            continue;
+          }
+        }
+      }
+
+      // Handle Gravity Vortex (gentle pull on player)
+      if (h.type === 'gravity_vortex') {
+        const dx = h.x - this.player.x;
+        const dy = h.y - this.player.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 180 && dist > 20) {
+          const pullForce = (1 - dist / 180) * 45 * dt;
+          this.player.x += (dx / dist) * pullForce;
+        }
+      }
+
+      // Cull offscreen
+      if (h.y > this.height + 80) {
+        this.spaceHazards.splice(i, 1);
+      }
+    }
+  }
+
   private updateTargets(dt: number) {
     const maxTargetsOnScreen = Math.min(6, 3 + Math.floor(this.stats.level / 2));
     this.spawnCooldown -= dt;
@@ -3011,7 +3286,8 @@ export class GameEngine {
         let targetX: number | null = null;
         let targetY: number | null = null;
 
-        // Smart Target Selection: Prioritize closest alien fighter first so player can fight enemy planes easily!
+        // Smart Anti-Plane Target Lock: Homing missiles strictly target hostile alien fighters and bosses!
+        // Target huruf / kuis edukasi sengaja TIDAK dibidik otomatis agar pemain benar-benar belajar & membidik sendiri!
         if (this.alienFighters.length > 0) {
           let closestAlienDist = 999999;
           for (const a of this.alienFighters) {
@@ -3028,26 +3304,6 @@ export class GameEngine {
         if (targetX === null && this.boss && !this.boss.isDying) {
           targetX = this.boss.x;
           targetY = this.boss.y;
-        }
-
-        if (targetX === null) {
-          // Prioritize correct mission target if on screen
-          const correctTarget = this.targets.find((t) => t.isCorrect && t.y > 0 && t.y < this.height);
-          if (correctTarget) {
-            targetX = correctTarget.x;
-            targetY = correctTarget.y;
-          } else if (this.targets.length > 0) {
-            let closestDist = 999999;
-            for (const t of this.targets) {
-              if (t.y < 0) continue;
-              const dist = Math.hypot(t.x - p.x, t.y - p.y);
-              if (dist < closestDist) {
-                closestDist = dist;
-                targetX = t.x;
-                targetY = t.y;
-              }
-            }
-          }
         }
 
         if (targetX !== null && targetY !== null) {
@@ -3376,6 +3632,79 @@ export class GameEngine {
         continue;
       }
 
+      // Check collision with Space Hazards (Pagar Laser Pylons & Magma Asteroids)
+      for (let hi = this.spaceHazards.length - 1; hi >= 0; hi--) {
+        const h = this.spaceHazards[hi];
+        if (h.type === 'laser_fence') {
+          const halfF = (h.fenceWidth || 140) / 2;
+          const leftX = h.x - halfF;
+          const rightX = h.x + halfF;
+
+          // Check Left Pylon
+          if (h.leftAlive && Math.hypot(proj.x - leftX, proj.y - h.y) < h.radius + proj.radius) {
+            projConsumed = true;
+            h.leftEmitterHp = (h.leftEmitterHp || 2) - proj.power * (this.isGodMode ? 4 : 1);
+            h.hitFlash = 1.0;
+            this.createSparks(proj.x, proj.y, '#00f0ff', 8);
+            sound.playHit();
+            if (h.leftEmitterHp <= 0) {
+              h.leftAlive = false;
+              h.overloadTimer = 0;
+              sound.playExplosion(false);
+              this.createExplosion(leftX, h.y, '#00f0ff', 20);
+              this.stats.score += h.scoreValue;
+              this.addFloatingText(leftX, h.y - 20, '⚡ SIRKUIT PAGAR LASER HANCUR!', '#38bdf8', 1.4);
+            }
+            break;
+          }
+
+          // Check Right Pylon
+          if (h.rightAlive && Math.hypot(proj.x - rightX, proj.y - h.y) < h.radius + proj.radius) {
+            projConsumed = true;
+            h.rightEmitterHp = (h.rightEmitterHp || 2) - proj.power * (this.isGodMode ? 4 : 1);
+            h.hitFlash = 1.0;
+            this.createSparks(proj.x, proj.y, '#00f0ff', 8);
+            sound.playHit();
+            if (h.rightEmitterHp <= 0) {
+              h.rightAlive = false;
+              h.overloadTimer = 0;
+              sound.playExplosion(false);
+              this.createExplosion(rightX, h.y, '#00f0ff', 20);
+              this.stats.score += h.scoreValue;
+              this.addFloatingText(rightX, h.y - 20, '⚡ SIRKUIT PAGAR LASER HANCUR!', '#38bdf8', 1.4);
+            }
+            break;
+          }
+        } else if (h.type === 'magma_asteroid') {
+          const dist = Math.hypot(proj.x - h.x, proj.y - h.y);
+          if (dist < h.radius + proj.radius) {
+            projConsumed = true;
+            h.hp -= proj.power * (this.isGodMode ? 6 : 1);
+            h.hitFlash = 1.0;
+            this.createSparks(proj.x, proj.y, '#f97316', 8);
+            sound.playHit();
+            if (h.hp <= 0) {
+              sound.playExplosion(true);
+              this.createExplosion(h.x, h.y, '#f97316', 28);
+              this.stats.score += h.scoreValue;
+              this.player.specialEnergy = Math.min(100, this.player.specialEnergy + 15);
+              this.stats.specialEnergy = Math.floor(this.player.specialEnergy);
+              this.addFloatingText(h.x, h.y - 20, `+${h.scoreValue} ASTEROID PECAH!`, '#facc15', 1.4);
+              if (Math.random() < 0.4) {
+                this.spawnPowerUp(h.x, h.y);
+              }
+              this.spaceHazards.splice(hi, 1);
+            }
+            break;
+          }
+        }
+      }
+
+      if (projConsumed) {
+        this.projectiles.splice(pi, 1);
+        continue;
+      }
+
       for (let ti = this.targets.length - 1; ti >= 0; ti--) {
         const target = this.targets[ti];
         const dx = proj.x - target.x;
@@ -3508,6 +3837,15 @@ export class GameEngine {
       sound.playExplosion(false);
       this.triggerScreenShake(4, 0.2);
       this.createExplosion(target.x, target.y, '#38bdf8', 35);
+
+      // Radiant Noor Starburst & Calligraphy Praise (Belajar Jadi Spektakuler & Memuaskan!)
+      this.createRing(target.x, target.y, '#facc15', 70);
+      this.createRing(target.x, target.y, '#10b981', 50);
+      this.createSparks(target.x, target.y, '#fef08a', 25);
+      this.createSparks(target.x, target.y, '#34d399', 15);
+      const praises = ['✦ MAASYA ALLAH! MUMTAZ! ✦', '✦ TEPAT SEKALI! ✦', '✦ HEBAT! MUMTAZ! ✦', '✦ BINTANG KAFA BERSINAR! ✦'];
+      const chosenPraise = praises[Math.floor(Math.random() * praises.length)];
+      this.addFloatingText(target.x, target.y - 42, chosenPraise, '#facc15', 1.7);
 
       const doubleNotice = isDoubleScore ? ' [2X]' : '';
       const comboText = comboMultiplier > 1 ? ` (+${finalPoints} x${comboMultiplier}!${doubleNotice})` : ` (+${finalPoints}${doubleNotice})`;
@@ -3709,6 +4047,9 @@ export class GameEngine {
   private triggerScreenShake(intensity: number, duration: number) {
     this.shakeIntensity = intensity;
     this.shakeTimer = duration;
+    if (intensity >= 5) {
+      this.chromaticAberrationAlpha = Math.min(1.0, intensity * 0.08);
+    }
   }
 
   private createExplosion(x: number, y: number, primaryColor: string, particleCount: number) {
@@ -3854,11 +4195,18 @@ export class GameEngine {
     // 1a. Bright Daylight Atmospheric Features (Giant Sun, Lunar Horizon, Morning Dawn)
     this.renderBrightAtmosphere(ctx);
 
-    // 1b. PS5 Cinematic 3D Camera Roll Banking (vanishing point horizon pivot)
-    if (this.is3DVisualEnabled && Math.abs(this.cameraRoll) > 0.0005) {
-      ctx.translate(this.width / 2, this.height * 0.42);
-      ctx.rotate(this.cameraRoll);
-      ctx.translate(-this.width / 2, -this.height * 0.42);
+    // 1b. PS5 Cinematic 3D Camera Dynamic Banking, Pitch & FOV Zoom (Vanishing Horizon Pivot)
+    if (this.is3DVisualEnabled) {
+      const vpX = this.width / 2;
+      const vpY = this.height * 0.36 + this.cameraPitch * 120;
+      ctx.translate(vpX + this.cameraPanX, vpY);
+      if (Math.abs(this.cameraZoom - 1.0) > 0.001) {
+        ctx.scale(this.cameraZoom, this.cameraZoom);
+      }
+      if (Math.abs(this.cameraRoll) > 0.0003) {
+        ctx.rotate(this.cameraRoll);
+      }
+      ctx.translate(-vpX - this.cameraPanX, -vpY);
     }
 
     // 1c. 3D Hyperspace Perspective Grid & Depth Arena
@@ -3940,6 +4288,9 @@ export class GameEngine {
       // 6b. Active Alien Fighter Squadrons
       this.renderAlienFighters(ctx);
 
+      // 6c. Dynamic Space Hazards (Laser Barrier Fences, Magma Asteroids, Gravity Vortexes)
+      this.renderSpaceHazards(ctx);
+
       // 7. Targets (Letter Drones / Crystal Cores / Asteroids)
       this.renderTargets(ctx);
 
@@ -3983,6 +4334,61 @@ export class GameEngine {
     }
     // 14. Sci-Fi Film Anamorphic Lens Flare & Volumetric Bloom
     this.renderCinematicAnamorphicFlare(ctx);
+    this.renderPS5CinematicPostProcessing(ctx);
+
+    ctx.restore();
+  }
+
+  private renderPS5CinematicPostProcessing(ctx: CanvasRenderingContext2D) {
+    if (!this.is3DVisualEnabled) return;
+
+    // 1. PS5 Next-Gen Cinematic Vignette (Deep corner focal depth)
+    ctx.save();
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const vigRadius = Math.max(this.width, this.height) * 0.75;
+    const vigGrad = ctx.createRadialGradient(cx, cy, this.height * 0.32, cx, cy, vigRadius);
+    vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vigGrad.addColorStop(0.7, 'rgba(2, 6, 23, 0.22)');
+    vigGrad.addColorStop(1, 'rgba(2, 6, 23, 0.65)');
+    ctx.fillStyle = vigGrad;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    // 2. Raytraced Chromatic Aberration Screen Splitting (Triggered on impacts, overcharge & boss encounters)
+    if (this.chromaticAberrationAlpha > 0.02) {
+      ctx.globalCompositeOperation = 'screen';
+      const caShift = this.chromaticAberrationAlpha * 4.5;
+
+      // Cyan fringe pass
+      ctx.fillStyle = `rgba(0, 240, 255, ${this.chromaticAberrationAlpha * 0.12})`;
+      ctx.fillRect(-caShift, 0, this.width, this.height);
+
+      // Red/Magenta fringe pass
+      ctx.fillStyle = `rgba(244, 63, 94, ${this.chromaticAberrationAlpha * 0.12})`;
+      ctx.fillRect(caShift, 0, this.width, this.height);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // 3. 3D Hyperspace Tunnel Peripheral Speed Lines (Active flight sensation)
+    if (this.player.dashTimer > 0 || Math.abs(this.player.vx) > 80) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const numLines = 18;
+      const speedAlpha = this.player.dashTimer > 0 ? 0.45 : 0.18;
+      ctx.strokeStyle = `rgba(56, 189, 248, ${speedAlpha})`;
+      ctx.lineWidth = 1.2;
+
+      for (let i = 0; i < numLines; i++) {
+        const side = i % 2 === 0 ? 0 : this.width;
+        const y = ((i * 47 + this.speedLinesPhase * 30) % this.height);
+        const len = 35 + ((i * 23) % 45);
+        ctx.beginPath();
+        ctx.moveTo(side, y);
+        ctx.lineTo(side + (side === 0 ? len : -len), y + 10);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     ctx.restore();
   }
@@ -4639,7 +5045,7 @@ export class GameEngine {
     ctx.restore();
   }
 
-  // ==================== 3D PERSPECTIVE HYPERSPACE ARENA ====================
+  // ==================== PS5 NEXT-GEN 3D HYPERSPACE CURVED ARENA ====================
   private render3DPerspectiveGrid(ctx: CanvasRenderingContext2D) {
     if (!this.is3DVisualEnabled) return;
     ctx.save();
@@ -4654,24 +5060,59 @@ export class GameEngine {
       ? 'rgba(56, 189, 248, '
       : 'rgba(6, 182, 212, ';
 
+    const neonPrimary = isForest ? '#34d399' : world.id === 3 ? '#fbbf24' : world.id === 4 ? '#38bdf8' : '#00f0ff';
     const vpX = this.width / 2;
-    const vpY = this.height * 0.32; // 3D vanishing point on horizon
-    const floorY = this.height + 60;
+    const vpY = this.height * 0.34 + this.cameraPitch * 90; // 3D vanishing point on horizon
+    const floorY = this.height + 70;
 
-    // 1. Horizon Atmospheric Glow & Curvature Ridge
-    const horizonGrad = ctx.createLinearGradient(0, vpY - 25, 0, vpY + 35);
+    // 1. Horizon Anamorphic Laser Blade & Volumetric Rim Glow
+    const horizonGrad = ctx.createLinearGradient(0, vpY - 20, 0, vpY + 28);
     horizonGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    horizonGrad.addColorStop(0.5, isForest ? 'rgba(52, 211, 153, 0.22)' : 'rgba(56, 189, 248, 0.2)');
+    horizonGrad.addColorStop(0.5, isForest ? 'rgba(52, 211, 153, 0.28)' : 'rgba(56, 189, 248, 0.25)');
     horizonGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = horizonGrad;
-    ctx.fillRect(0, vpY - 25, this.width, 60);
+    ctx.fillRect(0, vpY - 20, this.width, 48);
 
-    // 2. 3D Radial Perspective Grid Beams (Vanishing Point to Screen Bottom)
-    const numRays = 18;
+    // Brilliant White-Hot Laser Horizon Line
+    ctx.save();
+    ctx.strokeStyle = neonPrimary;
+    ctx.lineWidth = 1.4;
+    ctx.shadowColor = neonPrimary;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(0, vpY);
+    ctx.lineTo(this.width, vpY);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. 3D Hyperspace Warp Rays (Streaming outward in 3D perspective from horizon vanishing point)
+    const numSpeedRays = 14;
+    ctx.save();
+    for (let sr = 0; sr < numSpeedRays; sr++) {
+      const angle = (sr / numSpeedRays) * Math.PI * 2 + (this.speedLinesPhase * 0.05);
+      // Skip top sky sector
+      if (Math.sin(angle) < -0.3) continue;
+
+      const progress = ((sr * 0.17 + this.speedLinesPhase * 0.08) % 1);
+      const innerDist = 40 + progress * 70;
+      const outerDist = innerDist + 50 + progress * 160;
+      const alpha = Math.sin(progress * Math.PI) * (this.player.dashTimer > 0 ? 0.65 : 0.28);
+
+      ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
+      ctx.lineWidth = 1.0 + progress * 2.2;
+      ctx.beginPath();
+      ctx.moveTo(vpX + Math.cos(angle) * innerDist, vpY + Math.sin(angle) * innerDist * 0.6);
+      ctx.lineTo(vpX + Math.cos(angle) * outerDist, vpY + Math.sin(angle) * outerDist * 0.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3. 3D Radial Perspective Floor Beams (Vanishing Point to Floor Bounds)
+    const numRays = 20;
     for (let r = 0; r <= numRays; r++) {
-      const bottomX = (this.width / numRays) * r * 2.1 - this.width * 0.55;
+      const bottomX = (this.width / numRays) * r * 2.2 - this.width * 0.6;
       const distFromCenter = Math.abs(bottomX - vpX) / (this.width * 1.1);
-      const alpha = Math.max(0.04, (1 - distFromCenter) * 0.25);
+      const alpha = Math.max(0.04, (1 - distFromCenter) * 0.28);
 
       ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
       ctx.lineWidth = 1.0;
@@ -4681,24 +5122,28 @@ export class GameEngine {
       ctx.stroke();
     }
 
-    // 3. 3D Latitudinal Depth Rings (Exponential Perspective Spacing + Wave Undulation)
-    const numRings = 12;
+    // 4. 3D Latitudinal Depth Rings with Ground Ripple under Player Ship
+    const numRings = 14;
     for (let i = 0; i < numRings; i++) {
       const progress = ((i + this.gridScroll / 40) / numRings) % 1;
-      const depthRatio = Math.pow(progress, 2.4); // 3D quadratic depth projection
+      const depthRatio = Math.pow(progress, 2.3);
       const y = vpY + (floorY - vpY) * depthRatio;
-      const alpha = Math.max(0.02, depthRatio * 0.32);
-      const lineWidth = Math.max(0.8, depthRatio * 2.2);
-      const waveAmp = depthRatio * 8;
+      const alpha = Math.max(0.02, depthRatio * 0.35);
+      const lineWidth = Math.max(0.8, depthRatio * 2.4);
+
+      // Localized engine wave distortion underneath the player
+      const distToPlayerY = Math.abs(y - this.player.y);
+      const engineDistortion = distToPlayerY < 80 ? Math.sin((80 - distToPlayerY) * 0.15 + this.gridPhase) * 6 : 0;
+      const waveAmp = depthRatio * 7 + engineDistortion;
 
       ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
       ctx.lineWidth = lineWidth;
       ctx.beginPath();
 
-      const span = this.width * (0.35 + depthRatio * 0.85);
+      const span = this.width * (0.35 + depthRatio * 0.9);
       const startX = vpX - span;
       const endX = vpX + span;
-      const steps = 14;
+      const steps = 16;
       const stepW = (endX - startX) / steps;
 
       for (let s = 0; s <= steps; s++) {
@@ -4709,6 +5154,38 @@ export class GameEngine {
       }
       ctx.stroke();
     }
+
+    // 5. Lateral 3D Cyber Railings & Perspective Altitude Columns (Left & Right Fences)
+    [-1, 1].forEach((side) => {
+      const numPosts = 7;
+      const railTopY = vpY - 15;
+      const railBottomY = floorY - 20;
+
+      for (let p = 0; p < numPosts; p++) {
+        const prog = Math.pow(p / numPosts, 1.8);
+        const postX = vpX + side * (this.width * 0.44 + prog * (this.width * 0.12));
+        const postBaseY = vpY + (railBottomY - vpY) * prog;
+        const postHeight = 22 + prog * 65;
+        const alpha = Math.max(0.05, prog * 0.45);
+
+        // Vertical cyber column
+        ctx.strokeStyle = `${gridColorPrefix}${alpha})`;
+        ctx.lineWidth = Math.max(1, prog * 2.2);
+        ctx.beginPath();
+        ctx.moveTo(postX, postBaseY);
+        ctx.lineTo(postX, postBaseY - postHeight);
+        ctx.stroke();
+
+        // Altitude beacon light at top of column
+        ctx.fillStyle = neonPrimary;
+        ctx.shadowColor = neonPrimary;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(postX, postBaseY - postHeight, Math.max(1.5, prog * 3), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    });
 
     ctx.restore();
   }
@@ -4890,9 +5367,16 @@ export class GameEngine {
     const pulseFl = Math.sin(p.idleHoverPhase * 8) * 3.5;
     const flameHeight = flameBase + pulseFl + Math.random() * 5;
 
-    // Twin Engines: Left (-15) & Right (+15)
-    [-15, 15].forEach((exX) => {
-      // Outer radiant flare (accent / solar color)
+    // 1. Dynamic Exhaust Nozzle Positions & Multi-Stage Plumes per Aircraft Skin
+    let enginePositions = [-15, 15];
+    if (skin.id === 'valkyrie') enginePositions = [-16, 0, 16];
+    else if (skin.id === 'apocalypse') enginePositions = [-18, 18];
+    else if (skin.id === 'nova') enginePositions = [-17, 0, 17];
+    else if (skin.id === 'titan') enginePositions = [-20, -8, 8, 20];
+    else if (skin.id === 'phantom') enginePositions = [-14, 14];
+
+    enginePositions.forEach((exX) => {
+      // Outer radiant flare
       const outerGrad = ctx.createLinearGradient(exX, 16, exX, 16 + flameHeight);
       outerGrad.addColorStop(0, skin.accentColor);
       outerGrad.addColorStop(0.4, skin.primaryColor);
@@ -4900,22 +5384,22 @@ export class GameEngine {
 
       ctx.fillStyle = outerGrad;
       ctx.beginPath();
-      ctx.moveTo(exX - 7, 16);
-      ctx.lineTo(exX + 7, 16);
+      ctx.moveTo(exX - 6, 16);
+      ctx.lineTo(exX + 6, 16);
       ctx.lineTo(exX, 16 + flameHeight);
       ctx.closePath();
       ctx.fill();
 
-      // Middle cyan plasma flame
+      // Middle plasma flame
       const midGrad = ctx.createLinearGradient(exX, 16, exX, 16 + flameHeight * 0.75);
       midGrad.addColorStop(0, '#ffffff');
-      midGrad.addColorStop(0.5, '#00f0ff');
+      midGrad.addColorStop(0.5, skin.primaryColor);
       midGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
 
       ctx.fillStyle = midGrad;
       ctx.beginPath();
-      ctx.moveTo(exX - 4.5, 16);
-      ctx.lineTo(exX + 4.5, 16);
+      ctx.moveTo(exX - 4, 16);
+      ctx.lineTo(exX + 4, 16);
       ctx.lineTo(exX, 16 + flameHeight * 0.75);
       ctx.closePath();
       ctx.fill();
@@ -4923,124 +5407,278 @@ export class GameEngine {
       // Inner white-hot electric core diamond
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(exX - 2.5, 16);
-      ctx.lineTo(exX + 2.5, 16);
+      ctx.moveTo(exX - 2, 16);
+      ctx.lineTo(exX + 2, 16);
       ctx.lineTo(exX, 16 + flameHeight * 0.45);
       ctx.closePath();
       ctx.fill();
 
+      // 3D Mach Shock Diamonds trailing in perspective
+      if (this.is3DVisualEnabled) {
+        for (let md = 1; md <= 3; md++) {
+          const mdY = 16 + md * (flameHeight * 0.28);
+          const mdSize = Math.max(1, 4.5 - md * 1.1);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(exX, mdY - mdSize);
+          ctx.lineTo(exX + mdSize, mdY);
+          ctx.lineTo(exX, mdY + mdSize);
+          ctx.lineTo(exX - mdSize, mdY);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
       // Engine Exhaust Nozzle Ring
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(exX - 5.5, 13, 11, 4);
+      ctx.fillRect(exX - 5, 13, 10, 4);
       ctx.strokeStyle = skin.primaryColor;
       ctx.lineWidth = 1.2;
-      ctx.strokeRect(exX - 5.5, 13, 11, 4);
+      ctx.strokeRect(exX - 5, 13, 10, 4);
     });
 
-    // 2. Main Hero Aerodynamic Hull Geometry (Deep Royal Blue / Midnight Navy Chassis)
+    // 1b. Wingtip Vapor Contrails & Hypersonic Exhaust Particles
+    if (isMoving || p.dashTimer > 0) {
+      const tipX = skin.id === 'titan' ? 38 : skin.id === 'valkyrie' ? 42 : skin.id === 'apocalypse' ? 40 : 36;
+      [-tipX, tipX].forEach((tx) => {
+        if (Math.random() < 0.45) {
+          this.particles.push({
+            x: p.x + tx + (Math.random() - 0.5) * 4,
+            y: p.y + 14,
+            vx: -p.vx * 0.05,
+            vy: Math.random() * 40 + 40,
+            size: Math.random() * 2 + 1,
+            color: skin.trailColor,
+            life: 0,
+            maxLife: 0.22,
+            alpha: 0.75,
+            type: 'trail',
+          });
+        }
+      });
+    }
+
+    // 2. Distinctive Airframe Geometries per Fighter Model
     ctx.fillStyle = skin.secondaryColor;
     ctx.strokeStyle = skin.primaryColor;
     ctx.lineWidth = 2.4;
 
-    ctx.beginPath();
-    ctx.moveTo(0, -36); // Sharpened aerodynamic nose tip
-    ctx.lineTo(10, -14); // Forward canard root
-    ctx.lineTo(16, -12); // Forward canard wing
-    ctx.lineTo(14, -6);
-    ctx.lineTo(18, -4);
-    ctx.lineTo(36, 12); // Swept main wingtip
-    ctx.lineTo(34, 22); // Outer stabilizer pod
-    ctx.lineTo(24, 18);
-    ctx.lineTo(18, 22); // Right engine cowl
-    ctx.lineTo(11, 16);
-    ctx.lineTo(0, 20); // Center keel ridge
-    ctx.lineTo(-11, 16);
-    ctx.lineTo(-18, 22); // Left engine cowl
-    ctx.lineTo(-24, 18);
-    ctx.lineTo(-34, 22); // Outer stabilizer pod
-    ctx.lineTo(-36, 12); // Swept main wingtip
-    ctx.lineTo(-18, -4);
-    ctx.lineTo(-14, -6);
-    ctx.lineTo(-16, -12); // Forward canard wing
-    ctx.lineTo(-10, -14); // Forward canard root
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    if (skin.id === 'valkyrie') {
+      // ===== KAFA VALKYRIE: Angelic Celestial Hyper-Cruiser =====
+      ctx.beginPath();
+      ctx.moveTo(0, -38);
+      ctx.lineTo(12, -18);
+      ctx.lineTo(26, -14);
+      ctx.lineTo(42, 4);
+      ctx.lineTo(40, 18);
+      ctx.lineTo(28, 16);
+      ctx.lineTo(24, 24);
+      ctx.lineTo(14, 20);
+      ctx.lineTo(0, 22);
+      ctx.lineTo(-14, 20);
+      ctx.lineTo(-24, 24);
+      ctx.lineTo(-28, 16);
+      ctx.lineTo(-40, 18);
+      ctx.lineTo(-42, 4);
+      ctx.lineTo(-26, -14);
+      ctx.lineTo(-12, -18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
 
-    // 3. Glowing Cyan / Neon Wingtip Crystal Energy Foils
-    ctx.save();
-    ctx.shadowColor = skin.primaryColor;
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = skin.primaryColor;
-    // Right wingtip foil
-    ctx.beginPath();
-    ctx.moveTo(34, 10);
-    ctx.lineTo(38, 12);
-    ctx.lineTo(35, 23);
-    ctx.lineTo(31, 21);
-    ctx.closePath();
-    ctx.fill();
-    // Left wingtip foil
-    ctx.beginPath();
-    ctx.moveTo(-34, 10);
-    ctx.lineTo(-38, 12);
-    ctx.lineTo(-35, 23);
-    ctx.lineTo(-31, 21);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+      // Golden Holy Halo above nose tip
+      ctx.save();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2.0;
+      ctx.shadowColor = '#facc15';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, -44, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
 
-    // 4. Titanium White Aerodynamic Dorsal Spine Armor Inset
-    ctx.fillStyle = skin.trimColor || '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(0, -32);
-    ctx.lineTo(7, -10);
-    ctx.lineTo(16, 4);
-    ctx.lineTo(11, 12);
-    ctx.lineTo(0, 14);
-    ctx.lineTo(-11, 12);
-    ctx.lineTo(-16, 4);
-    ctx.lineTo(-7, -10);
-    ctx.closePath();
-    ctx.fill();
+      // Angelic feather photon blade wingtips
+      ctx.fillStyle = skin.accentColor;
+      ctx.beginPath(); ctx.moveTo(40, 2); ctx.lineTo(46, 6); ctx.lineTo(42, 18); ctx.lineTo(38, 16); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-40, 2); ctx.lineTo(-46, 6); ctx.lineTo(-42, 18); ctx.lineTo(-38, 16); ctx.closePath(); ctx.fill();
 
-    // 5. Dynamic Solar Orange Chevron Decals & Wing Markings
-    ctx.fillStyle = skin.accentColor;
-    // Wing chevrons
-    ctx.beginPath();
-    ctx.moveTo(-28, 4);
-    ctx.lineTo(-20, 2);
-    ctx.lineTo(-22, 6);
-    ctx.lineTo(-29, 7);
-    ctx.closePath();
-    ctx.fill();
+      // Celestial white dorsal spine
+      ctx.fillStyle = skin.trimColor || '#ffffff';
+      ctx.beginPath(); ctx.moveTo(0, -34); ctx.lineTo(8, -8); ctx.lineTo(14, 8); ctx.lineTo(0, 14); ctx.lineTo(-14, 8); ctx.lineTo(-8, -8); ctx.closePath(); ctx.fill();
 
-    ctx.beginPath();
-    ctx.moveTo(28, 4);
-    ctx.lineTo(20, 2);
-    ctx.lineTo(22, 6);
-    ctx.lineTo(29, 7);
-    ctx.closePath();
-    ctx.fill();
+    } else if (skin.id === 'apocalypse') {
+      // ===== KAFA APOCALYPSE: Dark Matter Dragonwing =====
+      ctx.beginPath();
+      ctx.moveTo(0, -40);
+      ctx.lineTo(10, -22);
+      ctx.lineTo(22, -18);
+      ctx.lineTo(42, -2);
+      ctx.lineTo(36, 10);
+      ctx.lineTo(44, 18);
+      ctx.lineTo(26, 20);
+      ctx.lineTo(18, 24);
+      ctx.lineTo(0, 20);
+      ctx.lineTo(-18, 24);
+      ctx.lineTo(-26, 20);
+      ctx.lineTo(-44, 18);
+      ctx.lineTo(-36, 10);
+      ctx.lineTo(-42, -2);
+      ctx.lineTo(-22, -18);
+      ctx.lineTo(-10, -22);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
 
-    // Dorsal spine chevron
-    ctx.beginPath();
-    ctx.moveTo(0, -22);
-    ctx.lineTo(4, -14);
-    ctx.lineTo(0, -16);
-    ctx.lineTo(-4, -14);
-    ctx.closePath();
-    ctx.fill();
+      // Crimson dragon blade tips
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath(); ctx.moveTo(40, -4); ctx.lineTo(48, -2); ctx.lineTo(42, 14); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-40, -4); ctx.lineTo(-48, -2); ctx.lineTo(-42, 14); ctx.closePath(); ctx.fill();
 
-    // 6. Wing Energy Conduits / Glow Lines (Electric Cyan)
-    ctx.strokeStyle = skin.primaryColor;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-16, 2);
-    ctx.lineTo(-30, 12);
-    ctx.moveTo(16, 2);
-    ctx.lineTo(30, 12);
-    ctx.stroke();
+      // Dark matter glowing spine
+      ctx.fillStyle = '#e11d48';
+      ctx.beginPath(); ctx.moveTo(0, -36); ctx.lineTo(6, -12); ctx.lineTo(12, 6); ctx.lineTo(0, 16); ctx.lineTo(-12, 6); ctx.lineTo(-6, -12); ctx.closePath(); ctx.fill();
+
+    } else if (skin.id === 'phantom') {
+      // ===== KAFA PHANTOM: Stealth Void Interceptor =====
+      ctx.beginPath();
+      ctx.moveTo(0, -38);
+      ctx.lineTo(14, -12);
+      ctx.lineTo(38, 2);
+      ctx.lineTo(32, 22);
+      ctx.lineTo(20, 18);
+      ctx.lineTo(14, 24);
+      ctx.lineTo(0, 18);
+      ctx.lineTo(-14, 24);
+      ctx.lineTo(-20, 18);
+      ctx.lineTo(-32, 22);
+      ctx.lineTo(-38, 2);
+      ctx.lineTo(-14, -12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Violet stealth wing foils
+      ctx.fillStyle = skin.accentColor;
+      ctx.beginPath(); ctx.moveTo(36, 0); ctx.lineTo(40, 4); ctx.lineTo(34, 22); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-36, 0); ctx.lineTo(-40, 4); ctx.lineTo(-34, 22); ctx.closePath(); ctx.fill();
+
+      // Obsidian spine
+      ctx.fillStyle = skin.trimColor;
+      ctx.beginPath(); ctx.moveTo(0, -32); ctx.lineTo(6, -8); ctx.lineTo(10, 6); ctx.lineTo(0, 12); ctx.lineTo(-10, 6); ctx.lineTo(-6, -8); ctx.closePath(); ctx.fill();
+
+    } else if (skin.id === 'nova') {
+      // ===== KAFA NOVA: Solar Vanguard Delta =====
+      ctx.beginPath();
+      ctx.moveTo(0, -38);
+      ctx.lineTo(16, -10);
+      ctx.lineTo(36, 14);
+      ctx.lineTo(28, 22);
+      ctx.lineTo(18, 18);
+      ctx.lineTo(0, 22);
+      ctx.lineTo(-18, 18);
+      ctx.lineTo(-28, 22);
+      ctx.lineTo(-36, 14);
+      ctx.lineTo(-16, -10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Fiery solar wing vents
+      ctx.fillStyle = skin.accentColor;
+      ctx.beginPath(); ctx.moveTo(34, 12); ctx.lineTo(38, 14); ctx.lineTo(30, 24); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-34, 12); ctx.lineTo(-38, 14); ctx.lineTo(-30, 24); ctx.closePath(); ctx.fill();
+
+      // Golden solar dorsal armor
+      ctx.fillStyle = skin.trimColor;
+      ctx.beginPath(); ctx.moveTo(0, -32); ctx.lineTo(8, -10); ctx.lineTo(14, 6); ctx.lineTo(0, 14); ctx.lineTo(-14, 6); ctx.lineTo(-8, -10); ctx.closePath(); ctx.fill();
+
+    } else if (skin.id === 'titan') {
+      // ===== KAFA TITAN: Heavy Dreadwing =====
+      ctx.beginPath();
+      ctx.moveTo(0, -36);
+      ctx.lineTo(12, -24);
+      ctx.lineTo(24, -20);
+      ctx.lineTo(26, -8);
+      ctx.lineTo(40, 8);
+      ctx.lineTo(34, 24);
+      ctx.lineTo(22, 20);
+      ctx.lineTo(12, 24);
+      ctx.lineTo(0, 20);
+      ctx.lineTo(-12, 24);
+      ctx.lineTo(-22, 20);
+      ctx.lineTo(-34, 24);
+      ctx.lineTo(-40, 8);
+      ctx.lineTo(-26, -8);
+      ctx.lineTo(-24, -20);
+      ctx.lineTo(-12, -24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Heavy armor plates
+      ctx.fillStyle = skin.accentColor;
+      ctx.fillRect(-22, -18, 4, 12);
+      ctx.fillRect(18, -18, 4, 12);
+
+      // Heavy emerald dorsal armor
+      ctx.fillStyle = skin.trimColor;
+      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(10, -10); ctx.lineTo(16, 4); ctx.lineTo(0, 14); ctx.lineTo(-16, 4); ctx.lineTo(-10, -10); ctx.closePath(); ctx.fill();
+
+    } else {
+      // ===== PIONEER: Classic Supersonic Interceptor =====
+      ctx.beginPath();
+      ctx.moveTo(0, -36);
+      ctx.lineTo(10, -14);
+      ctx.lineTo(16, -12);
+      ctx.lineTo(14, -6);
+      ctx.lineTo(18, -4);
+      ctx.lineTo(36, 12);
+      ctx.lineTo(34, 22);
+      ctx.lineTo(24, 18);
+      ctx.lineTo(18, 22);
+      ctx.lineTo(11, 16);
+      ctx.lineTo(0, 20);
+      ctx.lineTo(-11, 16);
+      ctx.lineTo(-18, 22);
+      ctx.lineTo(-24, 18);
+      ctx.lineTo(-34, 22);
+      ctx.lineTo(-36, 12);
+      ctx.lineTo(-18, -4);
+      ctx.lineTo(-14, -6);
+      ctx.lineTo(-16, -12);
+      ctx.lineTo(-10, -14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cyan foils
+      ctx.fillStyle = skin.primaryColor;
+      ctx.beginPath(); ctx.moveTo(34, 10); ctx.lineTo(38, 12); ctx.lineTo(35, 23); ctx.lineTo(31, 21); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-34, 10); ctx.lineTo(-38, 12); ctx.lineTo(-35, 23); ctx.lineTo(-31, 21); ctx.closePath(); ctx.fill();
+
+      // Titanium spine
+      ctx.fillStyle = skin.trimColor || '#ffffff';
+      ctx.beginPath(); ctx.moveTo(0, -32); ctx.lineTo(7, -10); ctx.lineTo(16, 4); ctx.lineTo(11, 12); ctx.lineTo(0, 14); ctx.lineTo(-11, 12); ctx.lineTo(-16, 4); ctx.lineTo(-7, -10); ctx.closePath(); ctx.fill();
+    }
+
+    // 3b. Aerospace Navigation Strobe Lights (Blinking beacons)
+    const isStrobeOn = Math.floor(Date.now() / 450) % 2 === 0;
+    if (isStrobeOn) {
+      ctx.fillStyle = '#ef4444';
+      ctx.shadowColor = '#f87171';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(-36, 12, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#10b981';
+      ctx.shadowColor = '#34d399';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(36, 12, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
 
     // 7. Twin Wing Plasma Laser Cannons
     ctx.fillStyle = p.activeWeapon === 'energy_blast' ? '#f59e0b' : '#334155';
@@ -5052,7 +5690,15 @@ export class GameEngine {
     ctx.fillRect(-27, -18, 4, 3.5);
     ctx.fillRect(23, -18, 4, 3.5);
 
-    // 8. Signature Hero Bubble Cockpit Canopy (Deep Cyan Glass with 3D Specular Glare)
+    // 8. PS5 3D Cockpit Canopy with Dynamic Roll Perspective & Specular Arc
+    const roll3D = p.tilt * 1.4;
+    const cosRoll = Math.cos(roll3D);
+    const sinRoll = Math.sin(roll3D);
+    const cockpitShiftX = -sinRoll * 5;
+
+    ctx.save();
+    ctx.translate(cockpitShiftX, 0);
+
     const canopyGrad = ctx.createLinearGradient(0, -24, 0, 4);
     canopyGrad.addColorStop(0, '#ffffff');
     canopyGrad.addColorStop(0.3, skin.cockpitColor);
@@ -5061,7 +5707,7 @@ export class GameEngine {
 
     ctx.fillStyle = canopyGrad;
     ctx.beginPath();
-    ctx.ellipse(0, -7, 7.5, 15, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -7, Math.max(3, 7.5 * Math.abs(cosRoll)), 15, -sinRoll * 0.15, 0, Math.PI * 2);
     ctx.fill();
 
     // Cockpit chrome rim outline
@@ -5069,15 +5715,37 @@ export class GameEngine {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Curved Specular Glare Arc (giving it authentic glossy anime reflection)
+    // 3D Curved Specular Glare Arc shifting with roll angle
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(0, -7, 5.5, -Math.PI * 0.75, -Math.PI * 0.2);
+    ctx.arc(-sinRoll * 2, -7, Math.max(2, 5.5 * Math.abs(cosRoll)), -Math.PI * 0.75, -Math.PI * 0.2);
+    ctx.stroke();
+
+    // Pilot HUD scanlines inside canopy
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.lineWidth = 0.8;
+    for (let sl = -12; sl <= 0; sl += 4) {
+      ctx.beginPath();
+      ctx.moveTo(-4 * Math.abs(cosRoll), sl);
+      ctx.lineTo(4 * Math.abs(cosRoll), sl);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3D Tactical Flight Crosshair & Lead Reticle
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(p.vx * 0.03, -54, 10, 0, Math.PI * 2);
+    ctx.moveTo(p.vx * 0.03, -68);
+    ctx.lineTo(p.vx * 0.03, -40);
+    ctx.moveTo(p.vx * 0.03 - 14, -54);
+    ctx.lineTo(p.vx * 0.03 + 14, -54);
     ctx.stroke();
 
     // Inner Holographic Pilot Console Glow
-    ctx.fillStyle = 'rgba(103, 232, 249, 0.75)';
+    ctx.fillStyle = 'rgba(103, 232, 249, 0.85)';
     ctx.beginPath();
     ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
     ctx.fill();
@@ -5666,6 +6334,176 @@ export class GameEngine {
     ctx.restore();
   }
 
+  // ==================== SPACE HAZARDS RENDERING ====================
+  private renderSpaceHazards(ctx: CanvasRenderingContext2D) {
+    for (const h of this.spaceHazards) {
+      ctx.save();
+
+      if (h.type === 'laser_fence') {
+        const halfF = (h.fenceWidth || 140) / 2;
+        const leftX = h.x - halfF;
+        const rightX = h.x + halfF;
+        const beamActive = h.leftAlive && h.rightAlive;
+
+        // 1. Crackling Electric Laser Beam
+        if (beamActive) {
+          ctx.save();
+          // Outer neon cyan glow
+          ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+          ctx.lineWidth = 10;
+          ctx.beginPath();
+          ctx.moveTo(leftX, h.y);
+          ctx.lineTo(rightX, h.y);
+          ctx.stroke();
+
+          // Sizzling electric jagged line
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(leftX, h.y);
+          const steps = 8;
+          for (let s = 1; s < steps; s++) {
+            const sx = leftX + (h.fenceWidth! / steps) * s;
+            const sy = h.y + (Math.random() - 0.5) * 8;
+            ctx.lineTo(sx, sy);
+          }
+          ctx.lineTo(rightX, h.y);
+          ctx.stroke();
+
+          // Core brilliant white hot beam
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(leftX, h.y);
+          ctx.lineTo(rightX, h.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 2. Render Left and Right Emitter Pylons
+        const renderPylon = (px: number, alive: boolean) => {
+          ctx.save();
+          ctx.translate(px, h.y);
+
+          if (!alive) {
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            return;
+          }
+
+          // Pylon base
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = h.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, 14, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Pulsing energy core
+          const pulse = (Math.sin(h.phase) + 1) * 0.5;
+          ctx.fillStyle = h.hitFlash > 0 ? '#ffffff' : h.glowColor;
+          ctx.shadowColor = h.glowColor;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(0, 0, 7 + pulse * 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Emitter prongs
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-2, -18, 4, 6);
+          ctx.fillRect(-2, 12, 4, 6);
+
+          ctx.restore();
+        };
+
+        renderPylon(leftX, !!h.leftAlive);
+        renderPylon(rightX, !!h.rightAlive);
+      } else if (h.type === 'magma_asteroid') {
+        ctx.save();
+        ctx.translate(h.x, h.y);
+        ctx.rotate(h.angle);
+
+        // Craggy jagged asteroid base
+        ctx.fillStyle = h.hitFlash > 0 ? '#ffffff' : '#1c1917';
+        ctx.strokeStyle = h.color;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        const pts = 8;
+        for (let p = 0; p < pts; p++) {
+          const a = (p * Math.PI * 2) / pts;
+          const r = h.radius * (0.8 + ((p * 3) % 4) * 0.08);
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (p === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Molten glowing magma core & veins
+        const magmaGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, h.radius * 0.75);
+        magmaGrad.addColorStop(0, '#fef08a');
+        magmaGrad.addColorStop(0.4, '#f97316');
+        magmaGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = magmaGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, h.radius * 0.75, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Crackling magma vein lines
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-h.radius * 0.4, -h.radius * 0.3);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(h.radius * 0.5, h.radius * 0.2);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-h.radius * 0.2, h.radius * 0.5);
+        ctx.stroke();
+
+        ctx.restore();
+      } else if (h.type === 'gravity_vortex') {
+        ctx.save();
+        ctx.translate(h.x, h.y);
+        ctx.rotate(h.angle);
+
+        // Hypnotic swirling purple/cyan spiral
+        const vGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, h.radius);
+        vGrad.addColorStop(0, '#ffffff');
+        vGrad.addColorStop(0.3, '#c084fc');
+        vGrad.addColorStop(0.7, '#6b21a8');
+        vGrad.addColorStop(1, 'rgba(107, 33, 168, 0)');
+        ctx.fillStyle = vGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, h.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Spiral arms
+        ctx.strokeStyle = 'rgba(236, 72, 153, 0.7)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI * 4; a += 0.2) {
+          const r = (a / (Math.PI * 4)) * h.radius;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (a === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+  }
+
   // ==================== BOSS DREADNOUGHT RENDERING ====================
   private renderBoss(ctx: CanvasRenderingContext2D) {
     if (!this.boss) return;
@@ -5752,92 +6590,149 @@ export class GameEngine {
     for (const t of this.targets) {
       ctx.save();
 
-      // Vertical hover bobbing animation
-      const hoverY = Math.sin(t.floatTimer) * 3;
+      // Vertical hover floating animation
+      const hoverY = Math.sin(t.floatTimer) * 3.5;
       ctx.translate(t.x, t.y + hoverY);
 
       if (t.hitFlash > 0) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${t.hitFlash})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${t.hitFlash * 0.9})`;
         ctx.beginPath();
-        ctx.arc(0, 0, t.radius + 5, 0, Math.PI * 2);
+        ctx.arc(0, 0, t.radius + 8, 0, Math.PI * 2);
         ctx.fill();
       }
 
       const isTargetLetter = t.isCorrect;
-      const baseBorder = isTargetLetter ? '#00f0ff' : '#94a3b8';
 
-      ctx.save();
-      ctx.rotate(t.angle);
+      // 1. 3D Rotating Polyhedral Crystal Cage (True Perspective Octahedron / Hexagonal Bipyramid)
+      if (this.is3DVisualEnabled) {
+        ctx.save();
+        const rotY = t.floatTimer * 1.6;
+        const rotX = Math.sin(t.pulseTimer * 1.1) * 0.4;
+        const rotZ = Math.cos(t.pulseTimer * 0.8) * 0.25;
 
-      // Target Style Architectures
-      if (t.style === 'drone') {
-        // Hero Drone: Robot unit with dual antenna wings & scanner visor
-        ctx.strokeStyle = baseBorder;
-        ctx.lineWidth = isTargetLetter ? 2.8 : 1.8;
-        ctx.strokeRect(-t.radius - 2, -t.radius - 2, t.radius * 2 + 4, t.radius * 2 + 4);
-
-        // Side thruster pods
-        ctx.fillStyle = isTargetLetter ? '#00f0ff' : '#64748b';
-        ctx.fillRect(-t.radius - 7, -7, 5, 14);
-        ctx.fillRect(t.radius + 2, -7, 5, 14);
-
-        // Top antenna sensor
-        ctx.fillStyle = isTargetLetter ? '#facc15' : '#94a3b8';
-        ctx.beginPath();
-        ctx.arc(0, -t.radius - 5, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (t.style === 'asteroid') {
-        // Rocky crystal meteorite with thermal fissures
-        ctx.strokeStyle = isTargetLetter ? '#f59e0b' : '#78716c';
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        const pts = 8;
-        for (let p = 0; p < pts; p++) {
-          const ang = (p * 2 * Math.PI) / pts;
-          const dist = t.radius * (p % 2 === 0 ? 1.08 : 0.88);
-          const px = Math.cos(ang) * dist;
-          const py = Math.sin(ang) * dist;
-          if (p === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+        // 3D vertices (top apex, bottom apex, and 6 equatorial ring points)
+        const rad3D = t.radius * 1.25;
+        const rawVerts: [number, number, number][] = [
+          [0, -rad3D * 1.25, 0], // 0: Top Apex
+          [0, rad3D * 1.25, 0],  // 1: Bottom Apex
+        ];
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          rawVerts.push([Math.cos(a) * rad3D, Math.sin(a * 2 + t.pulseTimer) * 4, Math.sin(a) * rad3D]);
         }
-        ctx.closePath();
-        ctx.stroke();
-      } else {
-        // Hexagonal Energy Core with Corner Brackets
-        ctx.strokeStyle = baseBorder;
-        ctx.lineWidth = isTargetLetter ? 2.8 : 1.8;
-        ctx.beginPath();
-        const sides = 6;
-        for (let s = 0; s < sides; s++) {
-          const theta = (s * 2 * Math.PI) / sides;
-          const hx = Math.cos(theta) * (t.radius + 2);
-          const hy = Math.sin(theta) * (t.radius + 2);
-          if (s === 0) ctx.moveTo(hx, hy);
-          else ctx.lineTo(hx, hy);
-        }
-        ctx.closePath();
-        ctx.stroke();
 
-        for (let n = 0; n < 3; n++) {
-          const notAngle = (n * 2 * Math.PI) / 3;
-          ctx.fillStyle = isTargetLetter ? '#38bdf8' : '#cbd5e1';
+        // 3D Rotation Matrix projection
+        const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+        const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+        const cosZ = Math.cos(rotZ), sinZ = Math.sin(rotZ);
+
+        const projVerts: { x: number; y: number; z: number }[] = rawVerts.map(([vx, vy, vz]) => {
+          // Rot around Y
+          const x1 = vx * cosY + vz * sinY;
+          const y1 = vy;
+          const z1 = -vx * sinY + vz * cosY;
+          // Rot around X
+          const x2 = x1;
+          const y2 = y1 * cosX - z1 * sinX;
+          const z2 = y1 * sinX + z1 * cosX;
+          // Rot around Z
+          const x3 = x2 * cosZ - y2 * sinZ;
+          const y3 = x2 * sinZ + y2 * cosZ;
+          const z3 = z2;
+
+          // Perspective scaling
+          const fov = 170;
+          const scale = fov / (fov + z3);
+          return { x: x3 * scale, y: y3 * scale, z: z3 };
+        });
+
+        // 3D Polygonal Facets (translucent metallic crystal faces)
+        for (let i = 0; i < 6; i++) {
+          const next = 2 + ((i + 1) % 6);
+          const cur = 2 + i;
+          const vTop = projVerts[0];
+          const vBot = projVerts[1];
+          const v1 = projVerts[cur];
+          const v2 = projVerts[next];
+
+          // Face normal Z for top triangle
+          const normalZTop = (v1.x - vTop.x) * (v2.y - vTop.y) - (v1.y - vTop.y) * (v2.x - vTop.x);
+          if (normalZTop > 0) {
+            ctx.fillStyle = isTargetLetter ? 'rgba(6, 182, 212, 0.22)' : 'rgba(100, 116, 139, 0.15)';
+            ctx.beginPath();
+            ctx.moveTo(vTop.x, vTop.y);
+            ctx.lineTo(v1.x, v1.y);
+            ctx.lineTo(v2.x, v2.y);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          // Face normal Z for bottom triangle
+          const normalZBot = (v2.x - vBot.x) * (v1.y - vBot.y) - (v2.y - vBot.y) * (v1.x - vBot.x);
+          if (normalZBot > 0) {
+            ctx.fillStyle = isTargetLetter ? 'rgba(14, 116, 144, 0.25)' : 'rgba(51, 65, 85, 0.18)';
+            ctx.beginPath();
+            ctx.moveTo(vBot.x, vBot.y);
+            ctx.lineTo(v2.x, v2.y);
+            ctx.lineTo(v1.x, v1.y);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        // Draw 3D Crystal Edges with Depth Attenuation
+        for (let i = 0; i < 6; i++) {
+          const next = 2 + ((i + 1) % 6);
+          const cur = 2 + i;
+          const edgePairs = [
+            [0, cur],
+            [1, cur],
+            [cur, next],
+          ];
+
+          for (const [idxA, idxB] of edgePairs) {
+            const vA = projVerts[idxA];
+            const vB = projVerts[idxB];
+            const avgZ = (vA.z + vB.z) / 2;
+            const isFront = avgZ < 0;
+
+            ctx.strokeStyle = isTargetLetter
+              ? (isFront ? '#22d3ee' : 'rgba(8, 145, 178, 0.45)')
+              : (isFront ? 'rgba(203, 213, 225, 0.85)' : 'rgba(71, 85, 105, 0.38)');
+            ctx.lineWidth = isFront ? (isTargetLetter ? 2.5 : 1.6) : 0.9;
+            ctx.beginPath();
+            ctx.moveTo(vA.x, vA.y);
+            ctx.lineTo(vB.x, vB.y);
+            ctx.stroke();
+          }
+        }
+
+        // Dual 3D Gyroscope Orbital Rings
+        if (isTargetLetter) {
+          ctx.save();
+          const ringAng = t.floatTimer * 1.5;
+          ctx.strokeStyle = '#facc15';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([8, 6]);
           ctx.beginPath();
-          ctx.arc(Math.cos(notAngle) * t.radius, Math.sin(notAngle) * t.radius, 3, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.ellipse(0, 0, rad3D * 1.45, rad3D * 0.45, ringAng * 0.6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
         }
+
+        ctx.restore();
       }
 
-      ctx.restore();
-
-      // Deep High-Contrast Core backing so Arabic glyphs are 100% crystal clear
+      // 2. Core glowing radial energy backing
       const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, t.radius);
       if (isTargetLetter) {
-        coreGrad.addColorStop(0, '#042f2e');
-        coreGrad.addColorStop(0.7, '#083344');
-        coreGrad.addColorStop(1, '#082f49');
+        coreGrad.addColorStop(0, '#0e7490');
+        coreGrad.addColorStop(0.5, '#083344');
+        coreGrad.addColorStop(1, '#020617');
       } else {
         coreGrad.addColorStop(0, '#1e293b');
-        coreGrad.addColorStop(0.8, '#0f172a');
+        coreGrad.addColorStop(0.6, '#0f172a');
         coreGrad.addColorStop(1, '#020617');
       }
 
@@ -5846,23 +6741,30 @@ export class GameEngine {
       ctx.arc(0, 0, t.radius - 2, 0, Math.PI * 2);
       ctx.fill();
 
+      // Specular Glass Gleam Arc
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, t.radius - 5, -Math.PI * 0.85, -Math.PI * 0.35);
+      ctx.stroke();
+
       if (isTargetLetter) {
-        const pulse = (Math.sin(t.pulseTimer) + 1) * 0.5;
+        const pulse = (Math.sin(t.pulseTimer * 1.5) + 1) * 0.5;
         ctx.strokeStyle = `rgba(6, 182, 212, ${0.45 + pulse * 0.45})`;
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 2.0;
         ctx.beginPath();
         ctx.arc(0, 0, t.radius - 3, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Subject-Adaptive Dynamic Typography
+      // 4. Subject-Adaptive Dynamic Typography
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const wordLen = t.letter.arabic.length;
       let fontSize = Math.floor(t.radius * 1.05);
 
       if (t.letter.subject === 'hijaiyah' || (!t.letter.subject && wordLen <= 2)) {
-        fontSize = Math.floor(t.radius * 1.05);
+        fontSize = Math.floor(t.radius * 1.08);
         ctx.font = `bold ${fontSize}px 'Cairo', 'Amiri', 'Traditional Arabic', serif`;
       } else if (t.letter.subject === 'matematika') {
         fontSize = Math.floor(t.radius * (wordLen > 2 ? 0.75 : 0.95));
@@ -5880,21 +6782,23 @@ export class GameEngine {
       ctx.shadowBlur = isTargetLetter ? 14 : 4;
       ctx.fillStyle = isTargetLetter ? '#ffffff' : '#f1f5f9';
 
-      ctx.fillText(t.letter.arabic, 0, 2);
+      ctx.fillText(t.letter.arabic, 0, 1);
       ctx.shadowBlur = 0;
 
-      // Clean Subtitle Badge with Adaptive Width
+      // 5. Sleek Cyber Subtitle Badge with Adaptive Width
       const subText = t.letter.latin;
-      const subBadgeWidth = Math.max(48, Math.min(110, subText.length * 7.2));
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-      ctx.fillRect(-subBadgeWidth / 2, t.radius - 2, subBadgeWidth, 14);
-      ctx.strokeStyle = isTargetLetter ? 'rgba(56, 189, 248, 0.7)' : 'rgba(148, 163, 184, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-subBadgeWidth / 2, t.radius - 2, subBadgeWidth, 14);
+      const subBadgeWidth = Math.max(52, Math.min(120, subText.length * 7.5 + 16));
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
+      ctx.strokeStyle = isTargetLetter ? '#38bdf8' : '#475569';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(-subBadgeWidth / 2, t.radius - 1, subBadgeWidth, 16, 5);
+      ctx.fill();
+      ctx.stroke();
 
-      ctx.font = "bold 9px 'Plus Jakarta Sans', sans-serif";
-      ctx.fillStyle = isTargetLetter ? '#38bdf8' : '#94a3b8';
-      ctx.fillText(subText, 0, t.radius + 5);
+      ctx.font = "bold 9.5px 'Plus Jakarta Sans', sans-serif";
+      ctx.fillStyle = isTargetLetter ? '#67e8f9' : '#94a3b8';
+      ctx.fillText(subText, 0, t.radius + 7);
 
       ctx.restore();
     }

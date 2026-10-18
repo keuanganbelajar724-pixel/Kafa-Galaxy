@@ -275,7 +275,7 @@ export type MovementPattern = 'straight' | 'sine' | 'bounce' | 'zigzag';
 
 export type TargetStyle = 'drone' | 'core' | 'asteroid' | 'sentinel';
 
-export type ShipSkinId = 'pioneer' | 'phantom' | 'nova' | 'titan';
+export type ShipSkinId = 'pioneer' | 'phantom' | 'nova' | 'titan' | 'valkyrie' | 'apocalypse';
 
 export interface TargetEntity {
   id: string;
@@ -541,6 +541,35 @@ export interface AsteroidEntity {
   crystalVeinColor?: string;
   moonletAngle?: number;
   hitReactionTimer?: number;
+}
+
+export interface SpaceHazardEntity {
+  id: string;
+  type: 'laser_fence' | 'magma_asteroid' | 'gravity_vortex';
+  name: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  width: number;
+  height: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  hitFlash: number;
+  angle: number;
+  rotSpeed: number;
+  phase: number;
+  color: string;
+  glowColor: string;
+  scoreValue: number;
+  // Laser fence specific
+  fenceWidth?: number;
+  leftEmitterHp?: number;
+  rightEmitterHp?: number;
+  leftAlive?: boolean;
+  rightAlive?: boolean;
+  overloadTimer?: number;
 }
 
 export interface CosmicGasRibbonEntity {

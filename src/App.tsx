@@ -248,6 +248,15 @@ export default function App() {
     setGameStats((prev) => ({ ...prev, shipSkin: skinId }));
   }, []);
 
+  // Quick cycle between aircraft skins
+  const handleCycleShip = useCallback(() => {
+    if (engineRef.current) {
+      const nextSkin = engineRef.current.cycleNextSkin();
+      setCurrentSkinId(nextSkin);
+      setGameStats((prev) => ({ ...prev, shipSkin: nextSkin }));
+    }
+  }, []);
+
   // Weapon Selection
   const handleSelectWeapon = useCallback((weapon: WeaponType) => {
     if (engineRef.current) {
@@ -497,6 +506,8 @@ export default function App() {
             onToggle3D={handleToggle3D}
             onSelectWorld={handleSelectWorld}
             onToggleGodMode={handleToggleGodMode}
+            onCycleShip={handleCycleShip}
+            onOpenHangar={() => setShowHangarModal(true)}
           />
           <TouchControls
             onVirtualKey={handleVirtualKey}
@@ -561,6 +572,7 @@ export default function App() {
           currentSkinId={currentSkinId}
           onSelectSkin={handleSelectSkin}
           onClose={() => setShowHangarModal(false)}
+          isGodMode={gameStats.isGodMode}
         />
       )}
 

@@ -33,6 +33,8 @@ interface GameHUDProps {
   onToggle3D?: () => void;
   onSelectWorld?: (worldId: number) => void;
   onToggleGodMode?: () => void;
+  onCycleShip?: () => void;
+  onOpenHangar?: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -47,6 +49,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggle3D,
   onSelectWorld,
   onToggleGodMode,
+  onCycleShip,
+  onOpenHangar,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
   const [isJurusDeckExpanded, setIsJurusDeckExpanded] = React.useState(true);
@@ -353,15 +357,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     sound.playClick();
                     onToggle3D();
                   }}
-                  className={`px-2 py-1.5 rounded-xl border flex items-center gap-1 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
                     stats.is3DVisual !== false
-                      ? 'bg-cyan-950/90 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                      ? 'bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-cyan-950/90 border-cyan-400 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.55)] font-black'
                       : 'bg-slate-950/80 border-slate-700 hover:border-cyan-500/60 text-slate-400'
                   }`}
-                  title="Aktifkan / Matikan PS5 Cinematic 3D Engine"
+                  title="PS5 Next-Gen 3D Engine: 6DOF Camera, 3D Curved Arena, Shaded Airframe & Polyhedral Crystals"
                 >
-                  <span>🎬</span>
-                  <span>{stats.is3DVisual !== false ? 'PS5 3D' : '2D'}</span>
+                  <span className="text-xs">🎮</span>
+                  <span>{stats.is3DVisual !== false ? 'PS5 3D' : '2D RETRO'}</span>
+                  {stats.is3DVisual !== false && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping shadow-[0_0_6px_#00f0ff]" />
+                  )}
+                </button>
+              )}
+              {(onCycleShip || onOpenHangar) && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    if (onCycleShip) onCycleShip();
+                    else if (onOpenHangar) onOpenHangar();
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl border border-cyan-500/50 bg-slate-950/80 hover:bg-cyan-950/70 text-cyan-300 flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md"
+                  title="Ganti Model Pesawat Tempur (Pioneer, Phantom, Nova, Titan, Valkyrie, Apocalypse)"
+                >
+                  <span>✈️</span>
+                  <span className="hidden sm:inline">PESAWAT:</span>
+                  <span className="uppercase text-amber-300 truncate max-w-[70px]">
+                    {stats.shipSkin || 'PIONEER'}
+                  </span>
                 </button>
               )}
               {onToggleGodMode && (
@@ -525,6 +550,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   title="Ganti Lokasi Permainan"
                 >
                   <Globe className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {(onCycleShip || onOpenHangar) && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    if (onCycleShip) onCycleShip();
+                    else if (onOpenHangar) onOpenHangar();
+                  }}
+                  className="p-1 rounded-lg bg-slate-950/80 border border-cyan-500/50 text-cyan-300 text-xs"
+                  title="Ganti Model Pesawat"
+                >
+                  ✈️
                 </button>
               )}
 

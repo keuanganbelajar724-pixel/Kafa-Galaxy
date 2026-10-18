@@ -67,6 +67,32 @@ export const SHIP_SKINS: ShipSkin[] = [
     description: 'Pesawat tempur berzirah komposit tebal dengan kestabilan tembakan superior saat menghadapi rintangan berat.',
     unlockCondition: 'Capai Level 4 atau Akurasi 90%',
   },
+  {
+    id: 'valkyrie',
+    name: 'KAFA VALKYRIE',
+    subtitle: 'Celestial Hyper-Cruiser',
+    primaryColor: '#facc15', // holy gold
+    secondaryColor: '#1e1b4b', // deep celestial indigo
+    accentColor: '#38bdf8', // sky azure photon
+    cockpitColor: '#ffffff', // pure white crystal
+    trailColor: '#fde047',
+    trimColor: '#ffffff',
+    description: 'Pesawat legendaris bersayap bidadari cahaya dengan tiga nozzle foton emas, perisai suci malaikat, dan tembakan berkas cahaya suci berkilau.',
+    unlockCondition: 'Capai Level 3 atau Aktifkan Mode Dewa',
+  },
+  {
+    id: 'apocalypse',
+    name: 'KAFA APOCALYPSE',
+    subtitle: 'Dark Matter Dragonwing',
+    primaryColor: '#f43f5e', // crimson dark matter
+    secondaryColor: '#0a0512', // abyssal black
+    accentColor: '#ec4899', // neon magenta
+    cockpitColor: '#fb7185', // glowing crimson core
+    trailColor: '#e11d48',
+    trimColor: '#e2e8f0',
+    description: 'Pesawat naga kosmik bermaterial materi gelap pekat, berbilah sayap energi merah darah, dan semburan api jet antimateri membakar angkasa.',
+    unlockCondition: 'Kalahkan Boss atau Capai Skor 5.000',
+  },
 ];
 
 export interface GalaxyWorld {
