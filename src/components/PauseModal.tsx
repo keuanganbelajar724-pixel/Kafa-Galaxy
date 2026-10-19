@@ -1,7 +1,8 @@
 import React from 'react';
-import { Play, RotateCcw, Home, Volume2, VolumeX, Smartphone, Flame, Shield } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, Smartphone, Flame, Shield, Camera, Sparkles } from 'lucide-react';
 import { sound } from '../game/sound';
 import { haptics } from '../game/haptics';
+import { CameraMode, PS5GraphicsMode } from '../game/types';
 
 interface PauseModalProps {
   onResume: () => void;
@@ -13,6 +14,10 @@ interface PauseModalProps {
   onToggleAutoShoot?: () => void;
   isGodMode?: boolean;
   onToggleGodMode?: () => void;
+  cameraMode?: CameraMode;
+  onCycleCamera?: () => void;
+  ps5GraphicsMode?: PS5GraphicsMode;
+  onTogglePS5Graphics?: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
@@ -25,6 +30,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onToggleAutoShoot,
   isGodMode = true,
   onToggleGodMode,
+  cameraMode = 'chase_3d',
+  onCycleCamera,
+  ps5GraphicsMode = 'rt_ultra',
+  onTogglePS5Graphics,
 }) => {
   const [isMuted, setIsMuted] = React.useState(sound.getIsMuted());
 
@@ -113,6 +122,52 @@ export const PauseModal: React.FC<PauseModalProps> = ({
                   }`}
                 >
                   {isGodMode ? 'AKTIF (∞)' : 'OFF'}
+                </button>
+              </div>
+            )}
+            {onCycleCamera && (
+              <div className="flex items-center justify-between gap-1 mt-1.5 pt-1.5 border-t border-slate-800">
+                <span className="text-xs text-cyan-300 font-bold flex items-center gap-1">
+                  <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                  Kamera 3D (K):
+                </span>
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onCycleCamera();
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-orbitron cursor-pointer ${
+                    cameraMode === 'cockpit_fpv'
+                      ? 'bg-rose-950 border border-rose-400 text-rose-200'
+                      : cameraMode === 'topdown'
+                      ? 'bg-slate-800 border border-slate-700 text-slate-400'
+                      : 'bg-cyan-950 border border-cyan-400 text-cyan-200'
+                  }`}
+                >
+                  {cameraMode === 'cockpit_fpv' ? '🚀 KOKPIT FPV' : cameraMode === 'topdown' ? '🕹️ 2D TOP-DOWN' : '🎥 3D CHASE'}
+                </button>
+              </div>
+            )}
+            {onTogglePS5Graphics && (
+              <div className="flex items-center justify-between gap-1 mt-1.5 pt-1.5 border-t border-slate-800">
+                <span className="text-xs text-amber-300 font-bold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Grafis PS5 (G):
+                </span>
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onTogglePS5Graphics();
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-orbitron cursor-pointer ${
+                    ps5GraphicsMode !== 'perf_60'
+                      ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black shadow-[0_0_8px_#facc15]'
+                      : 'bg-slate-800 border border-slate-700 text-slate-300'
+                  }`}
+                >
+                  {ps5GraphicsMode !== 'perf_60' ? '✨ RT ULTRA HDR' : '⚡ 60FPS SPEED'}
                 </button>
               </div>
             )}

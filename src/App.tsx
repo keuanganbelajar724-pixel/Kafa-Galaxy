@@ -370,6 +370,20 @@ export default function App() {
     }
   }, []);
 
+  // Cycle Camera Mode (Chase 3D -> Cockpit FPV -> 2D Retro)
+  const handleCycleCamera = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.cycleCameraMode();
+    }
+  }, []);
+
+  // Toggle PS5 Graphics Mode (Ray-Tracing Ultra vs 60FPS Performance)
+  const handleTogglePS5Graphics = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.togglePS5GraphicsMode();
+    }
+  }, []);
+
   // Overcharge burst volley when tapping shoot during auto-shoot
   const handleOverchargeBurst = useCallback(() => {
     if (engineRef.current) {
@@ -504,6 +518,8 @@ export default function App() {
             onToggleRobotMode={handleToggleRobotMode}
             onToggleForestBiome={handleToggleForestBiome}
             onToggle3D={handleToggle3D}
+            onCycleCamera={handleCycleCamera}
+            onTogglePS5Graphics={handleTogglePS5Graphics}
             onSelectWorld={handleSelectWorld}
             onToggleGodMode={handleToggleGodMode}
             onCycleShip={handleCycleShip}
@@ -544,6 +560,10 @@ export default function App() {
           onToggleAutoShoot={handleToggleAutoShoot}
           isGodMode={gameStats.isGodMode}
           onToggleGodMode={handleToggleGodMode}
+          cameraMode={gameStats.cameraMode}
+          onCycleCamera={handleCycleCamera}
+          ps5GraphicsMode={gameStats.ps5GraphicsMode}
+          onTogglePS5Graphics={handleTogglePS5Graphics}
         />
       )}
 

@@ -183,9 +183,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       {/* Hero Center Section: Cinematic Brand Identity */}
       <div className="my-auto max-w-xl w-full flex flex-col items-center py-2 sm:py-4">
         {/* Mobile Compatible & PS5 Cinematic Badge */}
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-400/60 text-cyan-300 text-[10px] sm:text-[11px] font-black tracking-widest uppercase mb-1.5 shadow-[0_0_20px_rgba(6,182,212,0.5)] animate-pulse">
+        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-purple-950/90 border border-cyan-400/70 text-cyan-200 text-[10px] sm:text-[11px] font-black tracking-widest uppercase mb-1.5 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse">
           <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
-          <span>PS5 CINEMATIC 3D • KENDALI SENTUH LAYAR HP</span>
+          <span>PS5 PRO 3D ENGINE • CHASE & KOKPIT FPV • RAY-TRACING ULTRA</span>
         </div>
 
         {/* Master Brand Typography */}

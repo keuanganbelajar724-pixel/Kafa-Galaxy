@@ -686,6 +686,14 @@ export interface GameStats {
   challengeGoal?: number;
   challengeProgress?: number;
   is3DVisual?: boolean;
+  cameraMode?: CameraMode;
+  ps5GraphicsMode?: PS5GraphicsMode;
+  fpsCounter?: number;
+  isWarpDriveActive?: boolean;
+  warpDriveCooldown?: number;
   isGodMode?: boolean;
   isVictory?: boolean;
 }
+
+export type CameraMode = 'chase_3d' | 'cockpit_fpv' | 'topdown';
+export type PS5GraphicsMode = 'rt_ultra' | 'perf_60';

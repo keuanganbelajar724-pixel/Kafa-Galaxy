@@ -28,6 +28,8 @@ import {
   PowerUpEntity,
   PowerUpType,
   ProjectileEntity,
+  CameraMode,
+  PS5GraphicsMode,
   ShipSkinId,
   SpaceHazardEntity,
   SpiralGalaxyEntity,
@@ -151,9 +153,20 @@ export class GameEngine {
   private cameraZoom: number = 1.0;
   private targetCameraZoom: number = 1.0;
   private cameraPanX: number = 0;
+  private cameraMode: CameraMode = 'chase_3d';
+  private ps5GraphicsMode: PS5GraphicsMode = 'rt_ultra';
+  private fps: number = 60;
+  private fpsSampleTime: number = 0;
+  private fpsFrames: number = 0;
   private chromaticAberrationAlpha: number = 0;
   private speedLinesPhase: number = 0;
   private anamorphicFlareAlpha: number = 0;
+  private warpDriveTimer: number = 0;
+  private warpDriveCooldown: number = 0;
+  private warpLaserCooldown: number = 0;
+  private cosmicLightningTimer: number = 3.5;
+  private cosmicLightningBolt: { x1: number; y1: number; x2: number; y2: number; alpha: number } | null = null;
+  private auroraPhase: number = 0;
   private isGodMode: boolean = true; // Mode Dewa: Nyawa tak terbatas & kekuatan super
 
   // Game Stats
@@ -225,6 +238,11 @@ export class GameEngine {
     challengeGoal: 5,
     challengeProgress: 0,
     is3DVisual: true,
+    cameraMode: 'chase_3d',
+    ps5GraphicsMode: 'rt_ultra',
+    fpsCounter: 60,
+    isWarpDriveActive: false,
+    warpDriveCooldown: 0,
     isVictory: false,
   };
 
@@ -615,6 +633,16 @@ export class GameEngine {
       this.toggleForestBiome();
     }
 
+    // K: Cycle 3D Camera Mode (Chase 3D -> Cockpit FPV -> 2D Top-Down)
+    if (e.code === 'KeyK') {
+      this.cycleCameraMode();
+    }
+
+    // G: Toggle PS5 Ray-Tracing / Performance Mode
+    if (e.code === 'KeyG') {
+      this.togglePS5GraphicsMode();
+    }
+
     if (e.code === 'KeyP' || e.code === 'Escape') {
       this.togglePause();
     }
@@ -652,17 +680,51 @@ export class GameEngine {
   }
 
   public toggle3DVisual(): boolean {
-    this.is3DVisualEnabled = !this.is3DVisualEnabled;
+    return this.cycleCameraMode() !== 'topdown';
+  }
+
+  public cycleCameraMode(): CameraMode {
+    const modes: CameraMode[] = ['chase_3d', 'cockpit_fpv', 'topdown'];
+    const curIdx = modes.indexOf(this.cameraMode);
+    const nextMode = modes[(curIdx + 1) % modes.length];
+    this.setCameraMode(nextMode);
+    return nextMode;
+  }
+
+  public setCameraMode(mode: CameraMode) {
+    this.cameraMode = mode;
+    this.stats.cameraMode = mode;
+    this.is3DVisualEnabled = mode !== 'topdown';
     this.stats.is3DVisual = this.is3DVisualEnabled;
-    this.addFloatingText(
-      this.width / 2,
-      140,
-      this.is3DVisualEnabled ? '🎬 PS5 CINEMATIC 3D: AKTIF' : '🎮 MODE 2D RETRO: AKTIF',
-      this.is3DVisualEnabled ? '#38bdf8' : '#94a3b8',
-      1.3
-    );
+
+    const names: Record<CameraMode, string> = {
+      chase_3d: '🎥 KAMERA 3D: CHASE CAM (PERSPEKTIF PS5)',
+      cockpit_fpv: '🚀 KAMERA 3D: KOKPIT FPV PILOT',
+      topdown: '🕹️ KAMERA 2D: TOP-DOWN RETRO',
+    };
+    this.addFloatingText(this.width / 2, 140, names[mode] || mode, '#38bdf8', 1.5);
+    sound.playClick();
     this.callbacks.onStatsUpdate(this.stats);
-    return this.is3DVisualEnabled;
+  }
+
+  public getCameraMode(): CameraMode {
+    return this.cameraMode;
+  }
+
+  public togglePS5GraphicsMode(): PS5GraphicsMode {
+    this.ps5GraphicsMode = this.ps5GraphicsMode === 'rt_ultra' ? 'perf_60' : 'rt_ultra';
+    this.stats.ps5GraphicsMode = this.ps5GraphicsMode;
+    const txt = this.ps5GraphicsMode === 'rt_ultra'
+      ? '✨ GRAFIS PS5: RAY-TRACING ULTRA HDR'
+      : '⚡ GRAFIS PS5: 60FPS PERFORMANCE';
+    this.addFloatingText(this.width / 2, 160, txt, '#facc15', 1.5);
+    sound.playPowerup();
+    this.callbacks.onStatsUpdate(this.stats);
+    return this.ps5GraphicsMode;
+  }
+
+  public getPS5GraphicsMode(): PS5GraphicsMode {
+    return this.ps5GraphicsMode;
   }
 
   public getIs3DVisual(): boolean {
@@ -926,8 +988,17 @@ export class GameEngine {
       bossName: '',
       bossShielded: false,
       bossShieldLetter: null,
+      is3DVisual: this.is3DVisualEnabled,
+      cameraMode: this.cameraMode,
+      ps5GraphicsMode: this.ps5GraphicsMode,
+      fpsCounter: this.fps,
+      isWarpDriveActive: false,
+      warpDriveCooldown: 0,
       isVictory: false,
     };
+
+    this.warpDriveTimer = 0;
+    this.warpDriveCooldown = 0;
 
     this.player.x = this.width / 2;
     this.player.y = this.height - 90;
@@ -1344,6 +1415,15 @@ export class GameEngine {
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
     this.lastTime = timestamp;
 
+    this.fpsFrames++;
+    this.fpsSampleTime += dt;
+    if (this.fpsSampleTime >= 0.5) {
+      this.fps = Math.max(30, Math.min(60, Math.round(this.fpsFrames / this.fpsSampleTime)));
+      this.stats.fpsCounter = this.fps;
+      this.fpsFrames = 0;
+      this.fpsSampleTime = 0;
+    }
+
     this.update(dt);
     this.render();
 
@@ -1424,6 +1504,64 @@ export class GameEngine {
       if (this.stats.challengeTimer <= 0) {
         this.endChallenge(false);
       }
+    }
+
+    // Warp Drive Handling & Relativistic Speed Rush
+    if (this.warpDriveCooldown > 0) {
+      this.warpDriveCooldown = Math.max(0, this.warpDriveCooldown - dt);
+      this.stats.warpDriveCooldown = this.warpDriveCooldown;
+    }
+
+    if (this.warpDriveTimer > 0) {
+      this.warpDriveTimer -= dt;
+      this.stats.isWarpDriveActive = true;
+      this.speedLinesPhase += dt * 65;
+      this.gridScroll = (this.gridScroll + dt * 450) % 40;
+      this.cameraZoom = 0.90;
+      this.chromaticAberrationAlpha = Math.min(1.0, this.chromaticAberrationAlpha + dt * 4);
+
+      // Auto-fire piercing hyper-plasma lasers
+      this.warpLaserCooldown -= dt;
+      if (this.warpLaserCooldown <= 0) {
+        this.warpLaserCooldown = 0.09;
+        const p = this.player;
+        [-24, -8, 8, 24].forEach((xOff, idx) => {
+          this.projectiles.push({
+            id: Math.random().toString(),
+            x: p.x + xOff,
+            y: p.y - 25,
+            vx: (idx - 1.5) * 35,
+            vy: -1000,
+            radius: 6,
+            length: 36,
+            color: '#00f0ff',
+            glowColor: '#38bdf8',
+            power: 3,
+            weaponType: 'standard',
+            piercing: true,
+          });
+        });
+        sound.playLaser('plasma');
+      }
+
+      // Gravitational warp pull on nearby powerups & target letters
+      for (const pu of this.powerUps) {
+        const dx = this.player.x - pu.x;
+        const dy = this.player.y - pu.y;
+        pu.x += Math.sign(dx) * Math.min(Math.abs(dx), 350 * dt);
+        pu.y += Math.sign(dy) * Math.min(Math.abs(dy), 350 * dt);
+      }
+
+      if (this.warpDriveTimer <= 0) {
+        this.stats.isWarpDriveActive = false;
+        this.anamorphicFlareAlpha = 1.0;
+        this.createRing(this.player.x, this.player.y, '#ffffff', 160);
+        this.createRing(this.player.x, this.player.y, '#00f0ff', 120);
+        sound.playExplosion(true);
+        this.addFloatingText(this.player.x, this.player.y - 40, '⚡ WARP COMPLETE!', '#38bdf8', 1.5);
+      }
+    } else {
+      this.stats.isWarpDriveActive = false;
     }
 
     const gameSpeedMultiplier = this.activePowerUps.slowmoTimer > 0 ? 0.45 : 1.0;
@@ -2486,6 +2624,55 @@ export class GameEngine {
     }
   }
 
+  public triggerWarpDrive() {
+    if (!this.isRunning || this.isPaused || this.isMenuAmbient) return;
+    if (this.warpDriveCooldown > 0 || this.warpDriveTimer > 0) {
+      if (this.warpDriveCooldown > 0) {
+        this.addFloatingText(this.player.x, this.player.y - 35, `WARP DRIVE CHARGING (${Math.ceil(this.warpDriveCooldown)}s)`, '#38bdf8', 1.0);
+        sound.playWrong();
+      }
+      return;
+    }
+
+    const p = this.player;
+    this.warpDriveTimer = 2.4;
+    this.warpDriveCooldown = 12.0;
+    p.invulnerableTimer = 2.8;
+    this.stats.isWarpDriveActive = true;
+    this.stats.warpDriveCooldown = 12.0;
+
+    // Cinematic warp sound & vibration
+    sound.playGalaxyBreakerCharge();
+    sound.playTransformJet();
+    haptics.trigger('ultimate');
+    this.triggerScreenShake(14, 0.8);
+    this.anamorphicFlareAlpha = 1.0;
+    this.chromaticAberrationAlpha = 0.9;
+
+    this.addFloatingText(this.width / 2, this.height * 0.42, '🚀 HYPERSPACE WARP ENGAGED! KECEPATAN CAHAYA!', '#00f0ff', 2.2);
+
+    // Expand radial shockwave
+    this.createRing(p.x, p.y, '#00f0ff', 80);
+    this.createRing(p.x, p.y, '#ffffff', 130);
+
+    for (let i = 0; i < 30; i++) {
+      this.particles.push({
+        x: p.x + (Math.random() - 0.5) * 40,
+        y: p.y + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 300,
+        vy: Math.random() * 400 + 200,
+        size: Math.random() * 4 + 2,
+        color: Math.random() > 0.5 ? '#00f0ff' : '#a855f7',
+        life: 0,
+        maxLife: 0.6,
+        alpha: 1,
+        type: 'spark',
+      });
+    }
+
+    this.callbacks.onStatsUpdate(this.stats);
+  }
+
   public toggleRobotMode() {
     const p = this.player;
     p.isRobotMode = !p.isRobotMode;
@@ -2662,7 +2849,27 @@ export class GameEngine {
   }
 
   private updateCosmos(dt: number) {
-    const warpSpeed = this.activePowerUps.slowmoTimer > 0 ? 0.5 : 1 + (this.stats.level - 1) * 0.15;
+    const isWarp = this.warpDriveTimer > 0;
+    const warpMult = isWarp ? 7.5 : 1.0;
+    const warpSpeed = (this.activePowerUps.slowmoTimer > 0 ? 0.5 : 1 + (this.stats.level - 1) * 0.15) * warpMult;
+
+    // Cosmic Aurora & Starlight Lightning
+    this.auroraPhase += dt * 0.45;
+    this.cosmicLightningTimer -= dt;
+    if (this.cosmicLightningTimer <= 0) {
+      this.cosmicLightningTimer = Math.random() * 4.5 + 3.0;
+      const lx1 = Math.random() * this.width;
+      const ly1 = Math.random() * this.height * 0.35;
+      const lx2 = lx1 + (Math.random() - 0.5) * 160;
+      const ly2 = ly1 + Math.random() * 90 + 40;
+      this.cosmicLightningBolt = { x1: lx1, y1: ly1, x2: lx2, y2: ly2, alpha: 1.0 };
+    }
+    if (this.cosmicLightningBolt) {
+      this.cosmicLightningBolt.alpha -= dt * 4.5;
+      if (this.cosmicLightningBolt.alpha <= 0) {
+        this.cosmicLightningBolt = null;
+      }
+    }
 
     // 0. 3D Hyperspace Perspective Grid Phase & Continuous Depth Scroll
     this.gridPhase = (this.gridPhase + dt * 2.2 * warpSpeed) % (Math.PI * 2);
@@ -4195,6 +4402,10 @@ export class GameEngine {
     // 1a. Bright Daylight Atmospheric Features (Giant Sun, Lunar Horizon, Morning Dawn)
     this.renderBrightAtmosphere(ctx);
 
+    // 1aa. Cosmic Phenomena: Aurora Borealis Curtains & Deep Space Electric Lightning
+    this.renderCosmicAurora(ctx);
+    this.renderCosmicLightning(ctx);
+
     // 1b. PS5 Cinematic 3D Camera Dynamic Banking, Pitch & FOV Zoom (Vanishing Horizon Pivot)
     if (this.is3DVisualEnabled) {
       const vpX = this.width / 2;
@@ -4309,7 +4520,9 @@ export class GameEngine {
     }
 
     // 10. Hero Star Fighter Player Ship or Mecha Robot (Always rendered, animated in both menu & game!)
-    if (this.player.isRobotMode) {
+    if (this.cameraMode === 'cockpit_fpv' && !this.isMenuAmbient) {
+      this.renderCockpitFPV(ctx);
+    } else if (this.player.isRobotMode) {
       this.renderHeroMechaRobot(ctx);
     } else {
       this.renderHeroShip(ctx);
@@ -4389,6 +4602,76 @@ export class GameEngine {
       }
       ctx.restore();
     }
+
+    // 4. PS5 Real-Time Ray-Traced Point Illumination Highlights
+    if (this.ps5GraphicsMode === 'rt_ultra') {
+      const p = this.player;
+      for (const proj of this.projectiles) {
+        const dx = proj.x - p.x;
+        const dy = proj.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 140) {
+          const ptGrad = ctx.createRadialGradient(proj.x, proj.y, 2, proj.x, proj.y, 80);
+          ptGrad.addColorStop(0, proj.color);
+          ptGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          ctx.globalAlpha = (1 - dist / 140) * 0.45;
+          ctx.fillStyle = ptGrad;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, 80, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // 5. PS5 Pro Console Real-Time Telemetry Watermark & RT Status Badge
+    ctx.save();
+    const isUltraRT = this.ps5GraphicsMode === 'rt_ultra';
+    const badgeW = 270;
+    const badgeH = 24;
+    const badgeX = 14;
+    const badgeY = this.height - 32;
+
+    // Glass backdrop with chromatic rim
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.78)';
+    ctx.strokeStyle = isUltraRT ? 'rgba(0, 240, 255, 0.55)' : 'rgba(148, 163, 184, 0.35)';
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // PS5 Logo / Icon
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 10px Orbitron, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('🎮 PS5 PRO', badgeX + 8, badgeY + 16);
+
+    // Dynamic FPS readout
+    ctx.fillStyle = this.fps >= 55 ? '#4ade80' : '#facc15';
+    ctx.font = 'bold 9px Orbitron, sans-serif';
+    ctx.fillText(`${this.fps} FPS`, badgeX + 82, badgeY + 16);
+
+    // RT Status indicator dot
+    ctx.fillStyle = isUltraRT ? '#00f0ff' : '#94a3b8';
+    ctx.shadowColor = isUltraRT ? '#00f0ff' : 'transparent';
+    ctx.shadowBlur = isUltraRT ? 6 : 0;
+    ctx.beginPath();
+    ctx.arc(badgeX + 138, badgeY + 12, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.font = '8px Orbitron, sans-serif';
+    ctx.fillText(isUltraRT ? 'RT ULTRA' : 'PERF 60', badgeX + 145, badgeY + 16);
+
+    // Active Camera Mode tag
+    ctx.fillStyle = this.cameraMode === 'cockpit_fpv' ? '#f43f5e' : '#38bdf8';
+    ctx.font = 'bold 8px Orbitron, sans-serif';
+    const camTag = this.cameraMode === 'cockpit_fpv' ? 'KOKPIT FPV' : this.cameraMode === 'chase_3d' ? '3D CHASE' : '2D RETRO';
+    ctx.fillText(`[${camTag}]`, badgeX + 210, badgeY + 16);
+    ctx.restore();
 
     ctx.restore();
   }
@@ -4685,6 +4968,66 @@ export class GameEngine {
     ctx.restore();
   }
 
+  // ==================== COSMIC PHENOMENA: AURORA & LIGHTNING ====================
+  private renderCosmicAurora(ctx: CanvasRenderingContext2D) {
+    if (this.stats.currentWorld.isBrightTheme) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const numRibbons = 3;
+    for (let r = 0; r < numRibbons; r++) {
+      const baseColor = r === 0 ? 'rgba(52, 211, 153, ' : r === 1 ? 'rgba(6, 182, 212, ' : 'rgba(168, 85, 247, ';
+      const startY = 25 + r * 38;
+      const waveFreq = 0.007 + r * 0.002;
+      const phase = this.auroraPhase + r * 1.5;
+
+      ctx.beginPath();
+      ctx.moveTo(0, startY);
+      for (let x = 0; x <= this.width; x += 22) {
+        const y = startY + Math.sin(x * waveFreq + phase) * 24 + Math.cos(x * 0.014 - phase * 0.6) * 14;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(this.width, 0);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+
+      const aGrad = ctx.createLinearGradient(0, 0, 0, 140);
+      aGrad.addColorStop(0, `${baseColor}0.22)`);
+      aGrad.addColorStop(0.5, `${baseColor}0.10)`);
+      aGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = aGrad;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private renderCosmicLightning(ctx: CanvasRenderingContext2D) {
+    if (!this.cosmicLightningBolt || this.cosmicLightningBolt.alpha <= 0.01) return;
+    const bolt = this.cosmicLightningBolt;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = `rgba(103, 232, 249, ${bolt.alpha * 0.85})`;
+    ctx.lineWidth = 2.0;
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 14;
+
+    ctx.beginPath();
+    ctx.moveTo(bolt.x1, bolt.y1);
+    const steps = 6;
+    for (let s = 1; s < steps; s++) {
+      const prog = s / steps;
+      const mx = bolt.x1 + (bolt.x2 - bolt.x1) * prog + (Math.random() - 0.5) * 24;
+      const my = bolt.y1 + (bolt.y2 - bolt.y1) * prog + (Math.random() - 0.5) * 16;
+      ctx.lineTo(mx, my);
+    }
+    ctx.lineTo(bolt.x2, bolt.y2);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255, 255, 255, ${bolt.alpha})`;
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ==================== BRIGHT DAYLIGHT ATMOSPHERIC FEATURES ====================
   private renderBrightAtmosphere(ctx: CanvasRenderingContext2D) {
     const world = this.stats.currentWorld;
@@ -4871,6 +5214,13 @@ export class GameEngine {
     for (const a of this.alienFighters) {
       ctx.save();
       ctx.translate(a.x, a.y);
+      // PS5 3D Depth Foreshortening: Distant swooping fighters appear smaller at horizon and scale up in foreground
+      if (this.is3DVisualEnabled && this.cameraMode !== 'topdown') {
+        const horizonY = this.height * 0.32;
+        const normalizedDepth = Math.max(0, Math.min(1.25, (a.y - horizonY) / (this.height * 0.55)));
+        const depthScale = 0.65 + 0.42 * normalizedDepth;
+        ctx.scale(depthScale, depthScale);
+      }
       ctx.rotate(a.tilt);
 
       if (a.hitFlash > 0) {
@@ -5064,6 +5414,33 @@ export class GameEngine {
     const vpX = this.width / 2;
     const vpY = this.height * 0.34 + this.cameraPitch * 90; // 3D vanishing point on horizon
     const floorY = this.height + 70;
+
+    // 0. Hyperspace Warp Drive Cylindrical Flux Tunnel Rings
+    if (this.warpDriveTimer > 0) {
+      const numWarpRings = 9;
+      for (let wr = 0; wr < numWarpRings; wr++) {
+        const ringProgress = ((wr + this.speedLinesPhase * 0.12) % numWarpRings) / numWarpRings;
+        const ringRadius = Math.pow(ringProgress, 2.0) * Math.max(this.width, this.height) * 0.95;
+        const ringAlpha = Math.sin(ringProgress * Math.PI) * 0.85;
+
+        ctx.strokeStyle = wr % 2 === 0 ? `rgba(0, 240, 255, ${ringAlpha})` : `rgba(168, 85, 247, ${ringAlpha})`;
+        ctx.lineWidth = 2.5 + ringProgress * 4.0;
+        ctx.beginPath();
+        ctx.ellipse(vpX, vpY, ringRadius, ringRadius * 0.65, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Warp lightning arcs connecting rings
+        if (wr % 3 === 0 && Math.random() < 0.4) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          const ang = Math.random() * Math.PI * 2;
+          ctx.moveTo(vpX + Math.cos(ang) * ringRadius * 0.7, vpY + Math.sin(ang) * ringRadius * 0.45);
+          ctx.lineTo(vpX + Math.cos(ang) * ringRadius, vpY + Math.sin(ang) * ringRadius * 0.65);
+          ctx.stroke();
+        }
+      }
+    }
 
     // 1. Horizon Anamorphic Laser Blade & Volumetric Rim Glow
     const horizonGrad = ctx.createLinearGradient(0, vpY - 20, 0, vpY + 28);
@@ -5891,6 +6268,504 @@ export class GameEngine {
     ctx.restore();
   }
 
+  // ==================== PS5 3D COCKPIT FPV PILOT VIEW ====================
+  private renderCockpitFPV(ctx: CanvasRenderingContext2D) {
+    const w = this.width;
+    const h = this.height;
+    const p = this.player;
+    const skin = SHIP_SKINS.find((s) => s.id === p.skin) || SHIP_SKINS[0];
+
+    ctx.save();
+
+    // 1. Cockpit Canopy Glass Tint & Edge Vignette
+    const glassGrad = ctx.createRadialGradient(w / 2, h * 0.45, w * 0.15, w / 2, h * 0.45, w * 0.85);
+    glassGrad.addColorStop(0, 'rgba(2, 6, 23, 0.02)');
+    glassGrad.addColorStop(0.7, 'rgba(6, 182, 212, 0.05)');
+    glassGrad.addColorStop(1, 'rgba(2, 6, 23, 0.45)');
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Dynamic curved canopy specular glare (shifts as the ship turns)
+    const glareOffset = (p.vx / p.speed) * 45;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(w / 2 + glareOffset, -h * 0.2, w * 0.75, Math.PI * 0.2, Math.PI * 0.8);
+    ctx.stroke();
+
+    // 2. 3D Fighter Canopy Structural Airframe
+    ctx.fillStyle = '#060a17';
+    ctx.strokeStyle = skin.primaryColor;
+    ctx.lineWidth = 2.0;
+
+    // Left Canopy Pillar
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    ctx.lineTo(w * 0.18, 0);
+    ctx.lineTo(w * 0.12, 0);
+    ctx.lineTo(0, h * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Right Canopy Pillar
+    ctx.beginPath();
+    ctx.moveTo(w, h);
+    ctx.lineTo(w * 0.82, 0);
+    ctx.lineTo(w * 0.88, 0);
+    ctx.lineTo(w, h * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Top Overhead Arch Canopy Strut
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(w, 0);
+    ctx.lineTo(w * 0.82, 38);
+    ctx.lineTo(w * 0.18, 38);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Interior Ambient Neon Strip along cockpit rim
+    ctx.strokeStyle = skin.accentColor;
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = skin.accentColor;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.19, 36);
+    ctx.lineTo(w * 0.81, 36);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 2b. Overhead Scrolling Tactical Compass Tape (360° Nav Heading)
+    ctx.save();
+    const compassW = Math.min(260, w * 0.5);
+    const compassX = (w - compassW) / 2;
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.82)';
+    ctx.strokeStyle = skin.primaryColor;
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.roundRect(compassX, 10, compassW, 20, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Compass Tape Tick Marks & Cardinal Directions
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(compassX + 2, 11, compassW - 4, 18);
+    ctx.clip();
+
+    const headingOffset = ((p.vx / p.speed) * 90 - this.cameraRoll * 60) % 360;
+    const compassStep = 30;
+    ctx.font = 'bold 8px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let deg = -180; deg <= 540; deg += compassStep) {
+      const relDeg = (deg - headingOffset);
+      const tickX = w / 2 + (relDeg / 60) * (compassW * 0.4);
+      if (tickX >= compassX - 20 && tickX <= compassX + compassW + 20) {
+        ctx.strokeStyle = deg % 90 === 0 ? '#38bdf8' : 'rgba(148, 163, 184, 0.45)';
+        ctx.lineWidth = deg % 90 === 0 ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(tickX, 12);
+        ctx.lineTo(tickX, deg % 90 === 0 ? 20 : 16);
+        ctx.stroke();
+
+        const label = deg % 360 === 0 ? 'N' : deg % 360 === 90 ? 'E' : deg % 360 === 180 ? 'S' : deg % 360 === 270 ? 'W' : `${((deg % 360 + 360) % 360)}`;
+        ctx.fillStyle = deg % 90 === 0 ? '#facc15' : '#94a3b8';
+        ctx.fillText(label, tickX, 23);
+      }
+    }
+    ctx.restore();
+
+    // Center Heading Lubber Line Diamond
+    ctx.fillStyle = '#00f0ff';
+    ctx.beginPath();
+    ctx.moveTo(w / 2, 10);
+    ctx.lineTo(w / 2 + 4, 6);
+    ctx.lineTo(w / 2 - 4, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // 2c. Twin Canopy Wing Plasma Cannons (Nose housings)
+    [-1, 1].forEach((side) => {
+      const gunX = side === -1 ? w * 0.13 : w * 0.87;
+      const gunY = h - 65;
+      const recoilY = (p.recoilOffset > 0 ? p.recoilOffset * 2.2 : 0);
+
+      ctx.save();
+      ctx.translate(gunX, gunY + recoilY);
+      ctx.rotate(side * 0.12);
+
+      // Gun Heavy Mount Housing
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = skin.primaryColor;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.roundRect(-8, -25, 16, 45, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      // Gun Heat Heat-Sink Vents
+      ctx.fillStyle = '#334155';
+      for (let v = -18; v <= 5; v += 6) {
+        ctx.fillRect(-6, v, 12, 2.5);
+      }
+
+      // Gun Muzzle Tip
+      ctx.fillStyle = p.recoilOffset > 1.5 ? '#ffffff' : skin.accentColor;
+      ctx.fillRect(-5, -30, 10, 6);
+
+      // Firing Muzzle Flash & Laser Bloom
+      if (p.recoilOffset > 1.2) {
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(0, -32, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, -32, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    });
+
+    // 3. Lower Flight Avionics Dashboard Console
+    const dashY = h - 95;
+    const dashGrad = ctx.createLinearGradient(0, dashY, 0, h);
+    dashGrad.addColorStop(0, '#090d1a');
+    dashGrad.addColorStop(0.3, '#0b1329');
+    dashGrad.addColorStop(1, '#030712');
+    ctx.fillStyle = dashGrad;
+    ctx.strokeStyle = skin.primaryColor;
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    ctx.lineTo(w * 0.12, dashY + 30);
+    ctx.lineTo(w * 0.28, dashY);
+    ctx.lineTo(w * 0.72, dashY);
+    ctx.lineTo(w * 0.88, dashY + 30);
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3b. Left Avionics Console: Real-Time Tactical Mini-Radar
+    const radarX = w * 0.20;
+    const radarY = dashY + 45;
+    const radarR = 24;
+
+    ctx.save();
+    // Radar Scope Glass
+    const rGrad = ctx.createRadialGradient(radarX, radarY, 2, radarX, radarY, radarR);
+    rGrad.addColorStop(0, '#022c22');
+    rGrad.addColorStop(0.7, '#064e3b');
+    rGrad.addColorStop(1, '#021812');
+    ctx.fillStyle = rGrad;
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(radarX, radarY, radarR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Radar Concentric Range Rings
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.35)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(radarX, radarY, radarR * 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Crosshairs
+    ctx.beginPath();
+    ctx.moveTo(radarX - radarR, radarY);
+    ctx.lineTo(radarX + radarR, radarY);
+    ctx.moveTo(radarX, radarY - radarR);
+    ctx.lineTo(radarX, radarY + radarR);
+    ctx.stroke();
+
+    // Rotating Radar Sweep Arm
+    const sweepAng = (Date.now() * 0.0035) % (Math.PI * 2);
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(radarX, radarY);
+    ctx.lineTo(radarX + Math.cos(sweepAng) * radarR, radarY + Math.sin(sweepAng) * radarR);
+    ctx.stroke();
+
+    // Plot Real-Time Target Blips on Radar
+    for (const t of this.targets) {
+      const relX = ((t.x - p.x) / (w * 0.6)) * (radarR * 0.8);
+      const relY = ((t.y - (h * 0.5)) / (h * 0.6)) * (radarR * 0.8);
+      const blipDist = Math.hypot(relX, relY);
+      if (blipDist <= radarR - 2) {
+        ctx.fillStyle = t.isCorrect ? '#00f0ff' : '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(radarX + relX, radarY + relY, t.isCorrect ? 2.5 : 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // Plot Alien Fighters Blips on Radar
+    for (const a of this.alienFighters) {
+      const relX = ((a.x - p.x) / (w * 0.6)) * (radarR * 0.8);
+      const relY = ((a.y - (h * 0.5)) / (h * 0.6)) * (radarR * 0.8);
+      if (Math.hypot(relX, relY) <= radarR - 2) {
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(radarX + relX, radarY + relY, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = '#34d399';
+    ctx.font = 'bold 7px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('RADAR 360°', radarX, radarY + radarR + 8);
+    ctx.restore();
+
+    // 3c. Right Avionics Console: 3-Axis G-Force & Engine Gyro Gauge
+    const gaugeX = w * 0.80;
+    const gaugeY = dashY + 45;
+    const gaugeR = 24;
+
+    ctx.save();
+    ctx.fillStyle = '#090d16';
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(gaugeX, gaugeY, gaugeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    const gVal = (1.0 + Math.abs(p.vx) / 85 + (p.recoilOffset > 2 ? 1.4 : 0)).toFixed(1);
+    const gPct = Math.min(1.0, parseFloat(gVal) / 6.0);
+
+    // Arc meter
+    ctx.strokeStyle = parseFloat(gVal) > 4 ? '#ef4444' : '#facc15';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(gaugeX, gaugeY, gaugeR - 4, Math.PI * 0.75, Math.PI * 0.75 + gPct * Math.PI * 1.5);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 10px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${gVal}G`, gaugeX, gaugeY + 3);
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 7px Orbitron, sans-serif';
+    ctx.fillText('G-FORCE', gaugeX, gaugeY + gaugeR + 8);
+    ctx.restore();
+
+    // Center Tactical Avionics Status Displays on Dash
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '900 8.5px Orbitron, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('SYS: PS5 FLIGHT LINK', w * 0.28, dashY + 20);
+    ctx.fillStyle = skin.accentColor;
+    ctx.fillText(`AIRFRAME: ${skin.name.toUpperCase()}`, w * 0.28, dashY + 34);
+
+    // Center-Right Dash Sensor readout
+    ctx.textAlign = 'right';
+    ctx.fillStyle = this.isGodMode ? '#facc15' : '#34d399';
+    ctx.fillText(this.isGodMode ? 'SHIELD: DEWA [∞]' : `SHIELD: ${Math.round(p.shieldHp)} HP`, w * 0.72, dashY + 20);
+    ctx.fillStyle = '#a855f7';
+    ctx.fillText(`WEAPON: ${p.activeWeapon.toUpperCase()}`, w * 0.72, dashY + 34);
+
+    // 4. Center 3D Animated Flight Joystick / Throttle Stick
+    const stickX = w / 2 + (p.vx / p.speed) * 28;
+    const stickY = dashY + 45;
+    ctx.save();
+    ctx.translate(stickX, stickY);
+    ctx.rotate((p.vx / p.speed) * 0.25);
+
+    // Joystick rubber boot
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.ellipse(0, 20, 22, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Grip handle
+    const gripGrad = ctx.createLinearGradient(-10, -35, 10, 20);
+    gripGrad.addColorStop(0, '#334155');
+    gripGrad.addColorStop(0.5, '#0f172a');
+    gripGrad.addColorStop(1, '#020617');
+    ctx.fillStyle = gripGrad;
+    ctx.beginPath();
+    ctx.roundRect(-8, -32, 16, 44, 4);
+    ctx.fill();
+
+    // Weapon trigger button
+    ctx.fillStyle = p.recoilOffset > 2 ? '#ef4444' : skin.primaryColor;
+    ctx.beginPath();
+    ctx.arc(0, -32, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 5. Collimated Holographic HUD (Projected on Glass Canopy)
+    const hudCenterX = w / 2;
+    const hudCenterY = h * 0.46 + this.cameraPitch * 100;
+
+    ctx.save();
+    ctx.translate(hudCenterX, hudCenterY);
+    ctx.rotate(-this.cameraRoll * 1.4);
+
+    // Artificial Horizon & Pitch Ladder
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+    ctx.lineWidth = 1.4;
+    // Central Horizon Bar
+    ctx.beginPath();
+    ctx.moveTo(-70, 0);
+    ctx.lineTo(-20, 0);
+    ctx.moveTo(20, 0);
+    ctx.lineTo(70, 0);
+    ctx.stroke();
+
+    // Pitch Ladder Rungs (+10, -10 degrees)
+    [-30, 30].forEach((rungY) => {
+      ctx.beginPath();
+      ctx.moveTo(-35, rungY);
+      ctx.lineTo(-15, rungY);
+      ctx.lineTo(-15, rungY + (rungY > 0 ? -4 : 4));
+      ctx.moveTo(35, rungY);
+      ctx.lineTo(15, rungY);
+      ctx.lineTo(15, rungY + (rungY > 0 ? -4 : 4));
+      ctx.stroke();
+    });
+
+    // Flight Path Vector Reticle (Velocity Direction)
+    const fpvX = (p.vx / p.speed) * 35;
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(fpvX, 0, 7, 0, Math.PI * 2);
+    ctx.moveTo(fpvX - 12, 0);
+    ctx.lineTo(fpvX - 7, 0);
+    ctx.moveTo(fpvX + 7, 0);
+    ctx.lineTo(fpvX + 12, 0);
+    ctx.moveTo(fpvX, -7);
+    ctx.lineTo(fpvX, -12);
+    ctx.stroke();
+
+    // Collimated Center Gun Pipper
+    ctx.fillStyle = '#00f0ff';
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // 6. Dynamic 3D Target Lock Box Tracking Active Hijaiyah Mission
+    const correctTarget = this.targets.find((t) => t.isCorrect);
+    if (correctTarget) {
+      ctx.save();
+      const targetScreenX = correctTarget.x;
+      const targetScreenY = correctTarget.y;
+      const distToPlayer = Math.hypot(p.x - targetScreenX, p.y - targetScreenY);
+
+      // Spinning 3D Lock Diamond Brackets
+      const lockAngle = Date.now() * 0.003;
+      const boxSize = 28 + Math.sin(Date.now() * 0.008) * 3;
+
+      ctx.translate(targetScreenX, targetScreenY);
+      ctx.rotate(lockAngle);
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 2.0;
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 12;
+
+      // 4 Corner Brackets
+      const c = boxSize;
+      const len = 8;
+      // Top-left
+      ctx.beginPath(); ctx.moveTo(-c, -c + len); ctx.lineTo(-c, -c); ctx.lineTo(-c + len, -c); ctx.stroke();
+      // Top-right
+      ctx.beginPath(); ctx.moveTo(c - len, -c); ctx.lineTo(c, -c); ctx.lineTo(c, -c + len); ctx.stroke();
+      // Bottom-left
+      ctx.beginPath(); ctx.moveTo(-c, c - len); ctx.lineTo(-c, c); ctx.lineTo(-c + len, c); ctx.stroke();
+      // Bottom-right
+      ctx.beginPath(); ctx.moveTo(c - len, c); ctx.lineTo(c, c); ctx.lineTo(c, c - len); ctx.stroke();
+
+      ctx.restore();
+
+      // HUD Lead Line from Cockpit Reticle to Target
+      ctx.save();
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.35)';
+      ctx.lineWidth = 1.0;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(hudCenterX, hudCenterY);
+      ctx.lineTo(targetScreenX, targetScreenY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Tactical Target Data Tag
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.roundRect(targetScreenX + 32, targetScreenY - 18, 95, 34, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#00f0ff';
+      ctx.font = 'bold 8.5px Orbitron, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('TARGET LOCK', targetScreenX + 37, targetScreenY - 6);
+      ctx.fillStyle = '#facc15';
+      ctx.fillText(`${correctTarget.letter.latin.toUpperCase()} | ${Math.round(distToPlayer / 4)}m`, targetScreenX + 37, targetScreenY + 8);
+      ctx.restore();
+    }
+
+    // 7. Tactical Speed & Altitude Ribbons on Glass Visor
+    ctx.save();
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '900 10px Orbitron, sans-serif';
+    // Airspeed on Left Tape
+    ctx.textAlign = 'left';
+    ctx.fillText('SPD: 1,480 KTS', w * 0.22, h * 0.38);
+    ctx.fillText('MACH 2.4', w * 0.22, h * 0.42);
+
+    // Altitude on Right Tape
+    ctx.textAlign = 'right';
+    ctx.fillText('ALT: 45,200 FT', w * 0.78, h * 0.38);
+    ctx.fillText('RADAR: ACTIVE', w * 0.78, h * 0.42);
+    ctx.restore();
+
+    // 8. Low Health / Enemy Threat Flashing Warning Bar
+    if (this.stats.lives <= 2 && !this.isGodMode) {
+      const flash = Math.floor(Date.now() / 250) % 2 === 0;
+      if (flash) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(w / 2 - 90, 48, 180, 24, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 10px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚠️ PERINGATAN: INTEGRITAS RENDAH', w / 2, 64);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  }
+
   // ==================== HERO MECHA ROBOT RENDERING ====================
   private renderHeroMechaRobot(ctx: CanvasRenderingContext2D) {
     const p = this.player;
@@ -6593,6 +7468,14 @@ export class GameEngine {
       // Vertical hover floating animation
       const hoverY = Math.sin(t.floatTimer) * 3.5;
       ctx.translate(t.x, t.y + hoverY);
+
+      // PS5 3D Depth Foreshortening: Distant horizon targets appear smaller, scaling dynamically as they approach foreground
+      if (this.is3DVisualEnabled && this.cameraMode !== 'topdown') {
+        const horizonY = this.height * 0.32;
+        const normalizedDepth = Math.max(0, Math.min(1.2, (t.y - horizonY) / (this.height * 0.55)));
+        const depthScale = 0.65 + 0.45 * normalizedDepth;
+        ctx.scale(depthScale, depthScale);
+      }
 
       if (t.hitFlash > 0) {
         ctx.fillStyle = `rgba(255, 255, 255, ${t.hitFlash * 0.9})`;

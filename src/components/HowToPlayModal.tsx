@@ -57,7 +57,10 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
                   • <b>Batu Raksasa Megalit & Planet Sahabat KAFA:</b> Di latar kosmik melayang Batu Megalit Raksasa dan Planet bertuliskan kaligrafi <b>SAHABAT KAFA (صَحَابَة كَافَا)</b>. Tembak batu megalit untuk memicu percikan energi kosmik rahasia!
                 </p>
                 <p>
-                  • <b>Mode Sinematik PS5 3D:</b> Efek kemiringan kamera 3D adaptif saat bermanuver, suar lensa anamorfik film sci-fi, dan grid kedalaman horizon.
+                  • <b>Tiga Mode Kamera 3D Next-Gen [Tombol K]:</b> Pilih antara <b>🎥 3D CHASE CAM</b> (sudut pandang orang ketiga sinematik dengan kemiringan dinamis dan grid horizon melengkung), <b>🚀 KOKPIT FPV PILOT</b> (tampilan langsung dari dalam kokpit jet tempur dengan radar taktis 360°, kompas tajam, dan joystick 3D interaktif), atau <b>🕹️ 2D TOP-DOWN</b> (gaya arcade klasik retro).
+                </p>
+                <p>
+                  • <b>Preset Grafis PS5 Pro [Tombol G]:</b> Beralih secara instan antara mode <b>✨ RAY-TRACING ULTRA HDR</b> (pantulan cahaya proyektil waktu nyata, suar anamorfik, bloom volumetrik, dan chromatic aberration sinematik) atau <b>⚡ 60FPS PERFORMANCE</b> untuk kelancaran visual tanpa tanding!
                 </p>
                 <p>
                   • <b>Getaran HP (Haptic Feedback):</b> Rasakan sensasi getaran taktil nyata saat menembak, kombo, terkena musuh, hingga mengaktifkan jurus pamungkas!

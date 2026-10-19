@@ -31,6 +31,10 @@ interface GameHUDProps {
   onToggleRobotMode?: () => void;
   onToggleForestBiome?: () => void;
   onToggle3D?: () => void;
+  onCycleCamera?: () => void;
+  onTogglePS5Graphics?: () => void;
+  onTriggerWarp?: () => void;
+  onOpenPhotoMode?: () => void;
   onSelectWorld?: (worldId: number) => void;
   onToggleGodMode?: () => void;
   onCycleShip?: () => void;
@@ -47,6 +51,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleRobotMode,
   onToggleForestBiome,
   onToggle3D,
+  onCycleCamera,
+  onTogglePS5Graphics,
+  onTriggerWarp,
+  onOpenPhotoMode,
   onSelectWorld,
   onToggleGodMode,
   onCycleShip,
@@ -350,25 +358,95 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <span>{stats.activeArenaBiome === 'forest' ? 'HUTAN' : 'ARENA'}</span>
                 </button>
               )}
-              {onToggle3D && (
+              {(onCycleCamera || onToggle3D) && (
                 <button
                   onClick={() => {
                     haptics.trigger('button');
                     sound.playClick();
-                    onToggle3D();
+                    if (onCycleCamera) onCycleCamera();
+                    else if (onToggle3D) onToggle3D();
                   }}
                   className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
-                    stats.is3DVisual !== false
-                      ? 'bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-cyan-950/90 border-cyan-400 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.55)] font-black'
-                      : 'bg-slate-950/80 border-slate-700 hover:border-cyan-500/60 text-slate-400'
+                    stats.cameraMode === 'cockpit_fpv'
+                      ? 'bg-gradient-to-r from-rose-950/90 via-slate-900/90 to-rose-950/90 border-rose-400 text-rose-200 shadow-[0_0_16px_rgba(244,63,94,0.6)] font-black'
+                      : stats.cameraMode === 'topdown' || stats.is3DVisual === false
+                      ? 'bg-slate-950/80 border-slate-700 hover:border-cyan-500/60 text-slate-400'
+                      : 'bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-cyan-950/90 border-cyan-400 text-cyan-200 shadow-[0_0_16px_rgba(6,182,212,0.55)] font-black'
                   }`}
-                  title="PS5 Next-Gen 3D Engine: 6DOF Camera, 3D Curved Arena, Shaded Airframe & Polyhedral Crystals"
+                  title="Ganti Mode Kamera 3D (K): Chase Cam 3D, Kokpit FPV Pilot, atau Top-Down 2D"
                 >
-                  <span className="text-xs">🎮</span>
-                  <span>{stats.is3DVisual !== false ? 'PS5 3D' : '2D RETRO'}</span>
-                  {stats.is3DVisual !== false && (
+                  <span className="text-xs">
+                    {stats.cameraMode === 'cockpit_fpv' ? '🚀' : stats.cameraMode === 'topdown' ? '🕹️' : '🎥'}
+                  </span>
+                  <span>
+                    {stats.cameraMode === 'cockpit_fpv'
+                      ? 'KOKPIT FPV'
+                      : stats.cameraMode === 'topdown'
+                      ? '2D TOP-DOWN'
+                      : '3D CHASE'}
+                  </span>
+                  {stats.cameraMode !== 'topdown' && stats.is3DVisual !== false && (
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping shadow-[0_0_6px_#00f0ff]" />
                   )}
+                </button>
+              )}
+              {onTogglePS5Graphics && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onTogglePS5Graphics();
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                    stats.ps5GraphicsMode !== 'perf_60'
+                      ? 'bg-gradient-to-r from-amber-950/90 via-purple-950/90 to-cyan-950/90 border-amber-400 text-amber-200 shadow-[0_0_16px_rgba(245,158,11,0.6)] font-black'
+                      : 'bg-slate-950/80 border-slate-700 hover:border-amber-400/50 text-slate-300'
+                  }`}
+                  title="Ganti Mode Grafis PS5 (G): Ray-Tracing Ultra HDR vs 60FPS Performance"
+                >
+                  <span className="text-xs">{stats.ps5GraphicsMode !== 'perf_60' ? '✨' : '⚡'}</span>
+                  <span>{stats.ps5GraphicsMode !== 'perf_60' ? 'PS5 RT' : '60 FPS'}</span>
+                </button>
+              )}
+              {onTriggerWarp && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onTriggerWarp();
+                  }}
+                  disabled={Boolean(stats.warpDriveCooldown && stats.warpDriveCooldown > 0)}
+                  className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md ${
+                    stats.isWarpDriveActive
+                      ? 'bg-gradient-to-r from-cyan-400 via-white to-cyan-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_#00f0ff] animate-pulse font-black'
+                      : stats.warpDriveCooldown && stats.warpDriveCooldown > 0
+                      ? 'bg-slate-950/80 border-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-blue-950/90 via-cyan-950/90 to-blue-950/90 border-cyan-500/80 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.4)] hover:brightness-125'
+                  }`}
+                  title="Warp Speed Hyperspace Jump (W): Terjang Ruang & Waktu dengan Kecepatan Cahaya!"
+                >
+                  <span className="text-xs">⚡</span>
+                  <span>
+                    {stats.isWarpDriveActive
+                      ? 'WARP ACTIVE!'
+                      : stats.warpDriveCooldown && stats.warpDriveCooldown > 0
+                      ? `WARP (${Math.ceil(stats.warpDriveCooldown)}s)`
+                      : 'WARP SPEED'}
+                  </span>
+                </button>
+              )}
+              {onOpenPhotoMode && (
+                <button
+                  onClick={() => {
+                    haptics.trigger('button');
+                    sound.playClick();
+                    onOpenPhotoMode();
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl border border-purple-500/60 bg-gradient-to-r from-purple-950/80 via-slate-900/80 to-purple-950/80 hover:bg-purple-900/70 text-purple-200 flex items-center gap-1.5 text-[10px] font-bold font-orbitron transition-all cursor-pointer backdrop-blur-md shadow-[0_0_12px_rgba(168,85,247,0.35)] hover:brightness-125"
+                  title="Mode Foto Sinematik 3D: Abadikan Foto Aksi & Unduh Gambar HD"
+                >
+                  <span className="text-xs">📸</span>
+                  <span>FOTO 3D</span>
                 </button>
               )}
               {(onCycleShip || onOpenHangar) && (
